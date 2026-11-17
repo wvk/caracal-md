@@ -43,6 +43,7 @@ gem 'rouge' # optional: syntax highlighting of fenced code
 | `> quote` | *Quote* |
 | `> [!NOTE]` … `> [!CAUTION]` (GitHub alerts) | *Note*, *Tip*, *Important*, *Warning*, *Caution*, with a label |
 | fenced and indented code | *Source Code*, highlighted by Rouge when installed |
+| ```` ```dot ````, ```` ```mermaid ````, … with a code handler | an image rendered from the block (see [Diagrams](#diagrams)) |
 | lists, nested lists, `3.` start numbers, `- [ ]` tasks | *List Bullet*, *List Number*, *List Bullet 2* … *5* and *List Number 2* … *5* for nested levels (*List Paragraph* below), with Word numbering; ☐ / ☒ |
 | GFM tables with alignment, `Table: caption` after the table | *Markdown Table* with a repeating header row, *Table Text* |
 | definition lists (kramdown) | *Definition Term*, *Definition* |
@@ -103,6 +104,45 @@ The paragraph reads "See Figure 1 and Table 1." Both kramdown and pandoc-crossre
 * `<!-- list-of-figures -->` or `lof: true` (placed after the table of contents) adds Word's table of figures, `<!-- list-of-tables -->` or `lot: true` the list of tables. Either numbers every caption, and Word fills in the page numbers on open.
 
 
+## Diagrams
+
+A code handler turns a fenced block into an image: a Graphviz, PlantUML or Mermaid diagram, a formula, anything a program or a service can render. Handlers are keyed by the fence's language; `math` also receives `$$` blocks.
+
+```ruby
+Caracal::Md.render(markdown, code_handlers: {
+  'dot'      => Caracal::Md::CommandHandler.new(%w[dot -Tpng]),
+  'plantuml' => Caracal::Md::CommandHandler.new('plantuml -tpng -pipe', timeout: 60),
+  'mermaid'  => ->(block) { MyDiagramService.png(block.source) },
+})
+```
+
+```sh
+caracal-md notes.md --code-handler 'dot=dot -Tpng' --code-handler 'plantuml=plantuml -tpng -pipe'
+```
+
+The image takes the place of the block, like a Markdown image. Attributes on the line after the fence give it an id, a caption (`title`), alt text and a size:
+
+````markdown
+```dot
+digraph { Markdown -> caracal -> Word }
+```
+{: #fig-pipeline title="From Markdown to Word" width="60%"}
+````
+
+A handler is anything that responds to `call(block)` and returns PNG, JPEG or GIF bytes. `block` is a `Caracal::Md::CodeBlock` with `language`, `source` and `attributes` (every attribute of the block as a String, so a handler can read its own, e.g. `theme="dark"`). `CommandHandler` is one such handler: it runs a program with the source on stdin and reads the image from stdout. Handlers for rendering services or other tools can come from any gem.
+
+**Untrusted documents.** Source and attributes come from whoever wrote the Markdown, and what a handler returns counts as untrusted, like an image from the web:
+
+* Only a non-empty String of at most 20 MB holding a PNG, JPEG or GIF with readable dimensions gets into the document. Anything else, an exception included, leaves the block as code and adds a warning.
+* At most 50 blocks run per document, and identical blocks run once. `Caracal::Md::CodeHandlers.new(handlers, max_calls: 50, max_bytes: 20 * 1024 * 1024)` sets other limits; pass it as `code_handlers:`.
+* `CommandHandler` takes the command as an argument list and never starts a shell; the source reaches the program on stdin only. The program runs in an empty temporary directory and in a process group of its own, which is killed when the program ends, after `timeout:` (30 seconds) or beyond `max_bytes:` of output.
+* Diagram tools read files. Graphviz embeds any image the process can read when a node says `image="/path/to/file.png"`, and Graphviz 14 has no setting against it; PlantUML has `!include`; mermaid-cli runs a headless browser. The empty working directory stops relative paths only. For untrusted Markdown, run the tool in a sandbox, e.g. bubblewrap on Linux; this command (tested with Graphviz 14 on Debian) gives `dot` read-only system files and no network, home or project files:
+
+```sh
+caracal-md notes.md --code-handler 'dot=bwrap --ro-bind /usr /usr --symlink usr/lib /lib --symlink usr/lib64 /lib64 --symlink usr/bin /bin --ro-bind /etc/fonts /etc/fonts --proc /proc --dev /dev --tmpfs /tmp --unshare-all --die-with-parent --new-session dot -Tpng'
+```
+
+
 ## Templates
 
 Pass any `.docx`, `.dotx`, `.docm` or `.dotm` as `template:` (a path, an IO, the bytes or a `Caracal::Md::Template`). The output keeps the template's styles, theme, fonts, settings, numbering, headers, footers and page setup; caracal-md fills in the body.
@@ -146,6 +186,7 @@ Keys are the style ids or names in the table above; values are style names or id
 | `quotes:` | from `lang`, else `:en` | `:en`, `:de`, `:fr` or four kramdown entity names |
 | `highlight:` | `true` | syntax highlighting, when Rouge is installed |
 | `figure_captions:` | `:title` | caption from the image title, `:alt` or `:none` |
+| `code_handlers:` | `{}` | language ⇒ handler, or a `CodeHandlers` with limits: fenced blocks as images, see [Diagrams](#diagrams) |
 | `number_captions:` | front matter, else `false` | `true` numbers every caption, `:chapter` per level-1 heading; figures and tables with an id are numbered either way |
 | `figure_label:`, `table_label:` | from `lang` | caption labels |
 | `lof:`, `lot:`, `lof_title:`, `lot_title:` | front matter, else off, *List of Figures*, *List of Tables* | lists of figures and tables |
@@ -178,13 +219,14 @@ Treat Markdown from users like any other input:
 * Local images are read only inside `base_dir`, symlinks resolved; paths outside it fall back to their alt text.
 * Remote images are off unless `allow_remote_images: true`. Turning them on lets the document's author make your server fetch URLs, internal ones included; consider an `image_loader` with an allowlist instead.
 * Raw OOXML is off unless `allow_raw_openxml: true`.
+* Code handlers get the block's source from the document and run what you configure; their output is checked like an image. See [Diagrams](#diagrams) for the limits and for sandboxing diagram tools.
 * Templates are read with a size limit per entry (`Caracal::Md::Package.max_entry_size`, 50 MB).
 
 
 ## How it works
 
 1. `FrontMatter` splits off the YAML; kramdown parses the rest.
-2. `Converter` walks the syntax tree and issues caracal commands, referring to styles by the ids in `Styles`. What caracal has no command for (footnotes, list start numbers, caption numbers, cross-references, lists of figures) it marks with private-use characters.
+2. `Converter` walks the syntax tree and issues caracal commands, referring to styles by the ids in `Styles`; `CodeHandlers` turn fenced blocks into checked image bytes. What caracal has no command for (footnotes, list start numbers, caption numbers, cross-references, lists of figures) it marks with private-use characters.
 3. caracal renders a complete package.
 4. With a template, `TemplateMerger` moves the body into a copy of the template: it resolves styles by name, numbers lists through the template's list styles where they have numbering (renumbering caracal's elsewhere), copies images and links, and fills the placeholders.
 5. `PostProcessor` turns the markers into footnotes, start numbers and fields (`SEQ`, `REF`, table of figures) with their results filled in, numbered in the final document order; `Language` and `CoreProperties` write `lang` and the document properties.

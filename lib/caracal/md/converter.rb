@@ -82,6 +82,7 @@ module Caracal
         captions:          nil,             # Captions: numbered captions and cross-references (need PostProcessor)
         lof:               false,           # list of figures after the table of contents
         lot:               false,           # list of tables after the table of contents
+        code_handlers:     nil,             # { language => handler } or CodeHandlers: fenced blocks as images
       }.freeze
 
       # pandoc-crossref references: @fig:id, [@fig:id], [-@fig:id] (number
@@ -114,6 +115,7 @@ module Caracal
         @targets       = []  # ids with a bookmark: headings and numbered captions
         @referenced    = []  # ids cross-references point to
         @caption_count = 0
+        @code_handlers = code_handlers(@options[:code_handlers])
         @image_loader  = @options[:image_loader] ||
           ImageLoader.new(base_dir: @options[:base_dir] || Dir.pwd, allow_remote: @options[:allow_remote_images])
         @highlighter   = Highlighter.new(theme: @options[:highlight_theme]) if @options[:highlight] and Highlighter.available?
@@ -215,7 +217,7 @@ module Caracal
         when :dl           then definition_list(el, target, ctx)
         when :table        then table(el, target, ctx)
         when :hr           then target.hr
-        when :math         then code_block(el, target, ctx, language: 'tex')
+        when :math         then code_block(el, target, ctx, language: 'tex', handler: 'math')
         when :html_element then html_block(el, target, ctx)
         when :xml_comment  then directive(comment_directive(el.value), target)
         when :raw          then raw_block(el, target)
@@ -336,9 +338,10 @@ module Caracal
         blocks([first, *children.drop(1)], target, ctx.merge(style: style, list_style: style))
       end
 
-      def code_block(el, target, ctx, language: nil)
+      def code_block(el, target, ctx, language: nil, handler: nil)
         language ||= el.options[:lang] || el.attr['class'].to_s[/\blanguage-(\S+)/, 1]
         return raw_openxml(el.value, target) if language == '{=openxml}'
+        return if handled_code_block(el, target, ctx, handler || language)
 
         source = expand_tabs(el.value.to_s.chomp)
         lines  = @highlighter&.lines(source, language) || source.split("\n", -1).map { |line| [[line, {}]] }
@@ -350,6 +353,34 @@ module Caracal
             runs.each { |text, options| p.text text, options.dup unless text.empty? }
           end
         end
+      end
+
+      #========== CODE HANDLERS ===============================
+
+      def code_handlers(handlers)
+        return if handlers.nil? or handlers.empty?
+
+        handlers = CodeHandlers.new(handlers) unless handlers.is_a?(CodeHandlers)
+        handlers.for_render
+      end
+
+      # Hands the block to the code handler for +language+ and shows the image
+      # it returns like a Markdown image: id, title (as caption), alt, width
+      # and height come from the block's attributes. Returns nil, leaving the
+      # block to be shown as code, when there is no handler or no image.
+      def handled_code_block(el, target, ctx, language)
+        return unless @code_handlers and language and @code_handlers.handles?(language)
+
+        attributes = el.attr.except('class').to_h { |key, value| [key.to_s.freeze, value.to_s.freeze] }.freeze
+        block = CodeBlock.new(language: language.dup.freeze, source: el.value.to_s.chomp.freeze, attributes: attributes)
+        data  = @code_handlers.render(block) { |message| warn message }
+        return unless data
+
+        attrs = attributes.slice('id', 'title', 'width', 'height')
+        attrs['src'] = 'image'
+        attrs['alt'] = attributes['alt'] || "#{language} diagram"
+        image(Kramdown::Element.new(:img, nil, attrs), target, ctx, data)
+        true
       end
 
       def list(el, target, ctx)

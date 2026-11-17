@@ -31,6 +31,7 @@ module Caracal
         lot:                 nil,       # list of tables
         lof_title:           nil,
         lot_title:           nil,
+        code_handlers:       {},        # { language => handler } or CodeHandlers: fenced blocks as images
         page_size:           :a4,       # without template
         margins:             1440,      # twips, without template
         styles:              nil,       # callable(docx): adjust the default styles
@@ -110,6 +111,7 @@ module Caracal
           base_dir:            @options[:base_dir],
           allow_remote_images: @options[:allow_remote_images],
           lang:                lang,
+          code_handlers:       @options[:code_handlers],
           lof:                 option_or_meta(:lof, meta['lof'], false),
           lot:                 option_or_meta(:lot, meta['lot'], false),
         }

@@ -26,7 +26,7 @@ end
 require 'optparse'
 require 'caracal/md'
 
-options   = { variables: {}, style_map: {} }
+options   = { variables: {}, style_map: {}, code_handlers: {} }
 output    = nil
 reference = nil
 
@@ -44,6 +44,11 @@ parser = OptionParser.new do |o|
     options[:variables][key] = value.to_s
   end
   o.on('--placeholder TEXT', 'template paragraph that receives the content (default {{content}})') { |v| options[:placeholder] = v }
+  o.on('--code-handler LANG=COMMAND', 'render ```LANG blocks with COMMAND (source on stdin, PNG on stdout, no shell), e.g. "dot=dot -Tpng"; repeatable') do |v|
+    language, command = v.split('=', 2)
+    abort "caracal-md: --code-handler needs LANG=COMMAND, got #{v.inspect}" if language.to_s.empty? or command.to_s.strip.empty?
+    options[:code_handlers][language] = Caracal::Md::CommandHandler.new(command)
+  end
   o.on('--[no-]toc', 'add a table of contents (default: front matter "toc")') { |v| options[:toc] = v }
   o.on('--toc-depth N', Integer, 'heading levels in the table of contents (default 3)') { |v| options[:toc_depth] = v }
   o.on('--toc-title TEXT', 'table of contents heading') { |v| options[:toc_title] = v }
@@ -78,6 +83,7 @@ begin
 
   options.delete(:style_map) if options[:style_map].empty?
   options.delete(:variables) if options[:variables].empty?
+  options.delete(:code_handlers) if options[:code_handlers].empty?
   if input == '-'
     markdown = $stdin.read
     output ||= 'output.docx'
