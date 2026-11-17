@@ -32,6 +32,7 @@ module Caracal
         lof_title:           nil,
         lot_title:           nil,
         code_handlers:       {},        # { language => handler } or CodeHandlers: fenced blocks as images
+        svg_rasterizer:      nil,       # call(CodeBlock with cleaned SVG) => PNG fallback; without it the fallback is blank
         page_size:           :a4,       # without template
         margins:             1440,      # twips, without template
         styles:              nil,       # callable(docx): adjust the default styles
@@ -112,6 +113,7 @@ module Caracal
           allow_remote_images: @options[:allow_remote_images],
           lang:                lang,
           code_handlers:       @options[:code_handlers],
+          svg_rasterizer:      @options[:svg_rasterizer],
           lof:                 option_or_meta(:lof, meta['lof'], false),
           lot:                 option_or_meta(:lot, meta['lot'], false),
         }

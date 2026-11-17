@@ -83,7 +83,12 @@ module Caracal
         lof:               false,           # list of figures after the table of contents
         lot:               false,           # list of tables after the table of contents
         code_handlers:     nil,             # { language => handler } or CodeHandlers: fenced blocks as images
+        svg_rasterizer:    nil,             # call(CodeBlock with the cleaned SVG) => PNG/JPEG/GIF fallback
       }.freeze
+
+      # Raster image bytes with their natural size in points, and the
+      # cleaned SVG they stand in for, if any.
+      Picture = Struct.new(:data, :width, :height, :svg)
 
       # pandoc-crossref references: @fig:id, [@fig:id], [-@fig:id] (number
       # only), [@fig:a; @tbl:b].
@@ -116,6 +121,7 @@ module Caracal
         @referenced    = []  # ids cross-references point to
         @caption_count = 0
         @code_handlers = code_handlers(@options[:code_handlers])
+        @svg_rasterizer = (CodeHandlers.new({ 'svg' => @options[:svg_rasterizer] }, raster_only: true) if @options[:svg_rasterizer])
         @image_loader  = @options[:image_loader] ||
           ImageLoader.new(base_dir: @options[:base_dir] || Dir.pwd, allow_remote: @options[:allow_remote_images])
         @highlighter   = Highlighter.new(theme: @options[:highlight_theme]) if @options[:highlight] and Highlighter.available?
@@ -373,13 +379,14 @@ module Caracal
 
         attributes = el.attr.except('class').to_h { |key, value| [key.to_s.freeze, value.to_s.freeze] }.freeze
         block = CodeBlock.new(language: language.dup.freeze, source: el.value.to_s.chomp.freeze, attributes: attributes)
-        data  = @code_handlers.render(block) { |message| warn message }
-        return unless data
+        data  = @code_handlers.render(block) { |message| warn "#{message}; shown as code" }
+        shown = (picture(data, "#{language} block") if data)
+        return unless shown
 
         attrs = attributes.slice('id', 'title', 'width', 'height')
         attrs['src'] = 'image'
         attrs['alt'] = attributes['alt'] || "#{language} diagram"
-        image(Kramdown::Element.new(:img, nil, attrs), target, ctx, data)
+        image(Kramdown::Element.new(:img, nil, attrs), target, ctx, shown)
         true
       end
 
@@ -684,27 +691,68 @@ module Caracal
         end
       end
 
-      # The image's bytes when they load and caracal can size them, else nil
-      # (with a warning), so the image shows as its alt text.
+      # The picture of an image element when it loads, else nil (with a
+      # warning), so the image shows as its alt text.
       def load_image(el)
         src  = el.attr['src'].to_s
         data = @image_loader.call(src)
-        if data.nil?
-          warn "#{src}: image not loaded"
-        elsif Caracal::ImageSize.read(data).nil?
-          warn "#{src}: unsupported image format, PNG, JPEG and GIF work"
-          data = nil
-        end
-        data
+        return picture(data, src) if data
+
+        warn "#{src}: image not loaded"
+        nil
       end
 
-      def image(el, target, ctx, data = load_image(el), id: el.attr['id'])
+      # The picture for image bytes from anywhere: a PNG, JPEG or GIF as it
+      # is, an SVG cleaned and rasterized; else nil with a warning.
+      def picture(data, name)
+        return svg_picture(data, name) if Svg.svg?(data)
+
+        size = Caracal::ImageSize.read(data)
+        unless size
+          warn "#{name}: unsupported image format, PNG, JPEG, GIF and SVG work"
+          return
+        end
+
+        dpi_x, dpi_y = Caracal::ImageSize.density(data) || [96, 96]
+        Picture.new(data, size[0] * 72.0 / dpi_x, size[1] * 72.0 / dpi_y)
+      end
+
+      # The cleaned SVG at its own size, with a raster fallback for readers
+      # without SVG support: the svg_rasterizer's PNG, else a blank one.
+      # caracal 2.0.0 embeds no SVG; there the rasterizer's PNG is all.
+      def svg_picture(data, name)
+        clean = Svg.clean(data)
+        warn "#{name}: removed from the SVG: #{clean.removed.join(', ')}" if clean.removed.any?
+
+        if Svg.embeddable?
+          raster = (rasterize(clean, name, 'the fallback image is blank') if @svg_rasterizer)
+          Picture.new(raster || Svg.blank_png(clean.width, clean.height), clean.width, clean.height, clean.svg)
+        elsif @svg_rasterizer
+          raster = rasterize(clean, name, 'shown as its alt text')
+          Picture.new(raster, clean.width, clean.height) if raster
+        else
+          warn "#{name}: SVG needs an svg_rasterizer, or caracal with SVG support"
+          nil
+        end
+      rescue Svg::Error => e
+        warn "#{name}: SVG refused, it #{e.message}"
+        nil
+      end
+
+      def rasterize(clean, name, consequence)
+        block = CodeBlock.new(language: 'svg', source: clean.svg.freeze, attributes: {}.freeze)
+        @svg_rasterizer.render(block) { |message| warn "#{name}: #{message}; #{consequence}" }
+      end
+
+      def image(el, target, ctx, picture = load_image(el), id: el.attr['id'])
         src = el.attr['src'].to_s
         alt = el.attr['alt'].to_s
-        return emit_paragraph(target, [Kramdown::Element.new(:text, alt.empty? ? src : alt)], style: ctx[:style] || 'Normal', fmt: { italic: true }) unless data
+        return emit_paragraph(target, [Kramdown::Element.new(:text, alt.empty? ? src : alt)], style: ctx[:style] || 'Normal', fmt: { italic: true }) unless picture
 
-        width, height = image_size(data, Caracal::ImageSize.read(data), el.attr, ctx)
-        target.img(src.start_with?('data:') ? 'image' : src, data: data, width: width, height: height, ppi: 72, align: ctx[:align] || :center)
+        width, height = image_size(picture, el.attr, ctx)
+        options = { data: picture.data, width: width, height: height, ppi: 72, align: ctx[:align] || :center }
+        options[:svg] = picture.svg if picture.svg
+        target.img(src.start_with?('data:') ? 'image' : src, options)
 
         caption = case @options[:figure_captions]
                   when :title then el.attr['title']
@@ -721,12 +769,11 @@ module Caracal
         end
       end
 
-      # Size in points: the image's own size, or width/height attributes,
+      # Size in points: the picture's own size, or width/height attributes,
       # scaled down to fit the text area.
-      def image_size(data, (px_width, px_height), attrs, ctx)
-        dpi_x, dpi_y = Caracal::ImageSize.density(data) || [96, 96]
-        width  = px_width * 72.0 / dpi_x
-        height = px_height * 72.0 / dpi_y
+      def image_size(picture, attrs, ctx)
+        width  = picture.width
+        height = picture.height
         max_width  = (ctx[:width] || @options[:text_width]) / 20.0
         max_height = @options[:text_height] / 20.0 * 0.9
 

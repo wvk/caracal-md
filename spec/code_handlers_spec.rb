@@ -17,13 +17,13 @@ RSpec.describe Caracal::Md::CodeHandlers do
     expect(render(handlers)).to eq([png, []])
   end
 
-  it 'refuses what is not a PNG, JPEG or GIF of readable size' do
+  it 'refuses what is not a PNG, JPEG, GIF or SVG' do
     {
       nil                       => 'returned NilClass',
       ''                        => 'returned nothing',
-      '<svg/>'                  => 'returned no PNG, JPEG or GIF image',
-      "\x89PNG\r\n\x1a\n".b     => 'returned no PNG, JPEG or GIF image',
-      'BM' + "\0" * 60          => 'returned no PNG, JPEG or GIF image',
+      '<html/>'                 => 'returned no PNG, JPEG, GIF or SVG image',
+      "\x89PNG\r\n\x1a\n".b     => 'returned no PNG, JPEG, GIF or SVG image',
+      'BM' + "\0" * 60          => 'returned no PNG, JPEG, GIF or SVG image',
       ['bytes']                 => 'returned Array',
       StringIO.new(png)         => 'returned StringIO',
     }.each do |result, message|
@@ -31,6 +31,15 @@ RSpec.describe Caracal::Md::CodeHandlers do
       expect(bytes).to be_nil
       expect(warnings.first).to include(message)
     end
+  end
+
+  it 'passes SVG on, unless raster_only' do
+    svg = %(<svg xmlns="http://www.w3.org/2000/svg"/>)
+    expect(render(described_class.new('dot' => ->(_) { svg })).first).to eq(svg)
+
+    bytes, warnings = render(described_class.new({ 'dot' => ->(_) { svg } }, raster_only: true))
+    expect(bytes).to be_nil
+    expect(warnings.first).to include('returned no PNG, JPEG or GIF image')
   end
 
   it 'refuses images over max_bytes' do
@@ -42,7 +51,7 @@ RSpec.describe Caracal::Md::CodeHandlers do
   it 'turns exceptions into a short warning' do
     bytes, warnings = render(described_class.new('dot' => ->(_) { raise IOError, "line\n" * 200 }))
     expect(bytes).to be_nil
-    expect(warnings.first).to start_with('dot handler failed (IOError: line line').and end_with('shown as code')
+    expect(warnings.first).to start_with('dot handler failed (IOError: line line').and end_with('…)')
     expect(warnings.first.length).to be < 400
   end
 
@@ -56,7 +65,7 @@ RSpec.describe Caracal::Md::CodeHandlers do
     bytes, warnings = render(handlers, block('third'))
     expect(calls).to eq(2)
     expect(bytes).to be_nil
-    expect(warnings.first).to include('more than 2 code blocks')
+    expect(warnings.first).to include('more than 2 blocks')
   end
 
   it 'starts afresh for each render' do

@@ -7,7 +7,8 @@ module Caracal
     # base_dir; http(s) URLs are fetched only with allow_remote. Returns nil for
     # anything it refuses or can't read, so the converter falls back to alt text.
     class ImageLoader
-      DATA_URI = %r{\Adata:image/[\w.+-]+;base64,(.*)\z}m
+      DATA_URI     = %r{\Adata:image/[\w.+-]+;base64,(.*)\z}m
+      SVG_DATA_URI = %r{\Adata:image/svg\+xml(?:;[\w.=-]+)*,(.*)\z}m # percent-encoded markup
 
       attr_reader :base_dir
 
@@ -21,6 +22,7 @@ module Caracal
       def call(src)
         case src
         when DATA_URI                   then Regexp.last_match(1).unpack1('m')
+        when SVG_DATA_URI               then URI::RFC2396_PARSER.unescape(Regexp.last_match(1))
         when %r{\Ahttps?://}i           then fetch(src) if @allow_remote
         when %r{\A[a-z][a-z0-9+.-]*:}i  then nil # file:, javascript: and friends
         else local(src)

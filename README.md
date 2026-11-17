@@ -30,6 +30,8 @@ gem 'caracal-md', github: 'wvk/caracal-md'
 gem 'rouge' # optional: syntax highlighting of fenced code
 ```
 
+SVG images need caracal's `master` (`branch: 'master'` in place of the tag) until its next release; with 2.0.0 they need a rasterizer, see [SVG](#svg).
+
 
 ## What converts to what
 
@@ -47,7 +49,7 @@ gem 'rouge' # optional: syntax highlighting of fenced code
 | lists, nested lists, `3.` start numbers, `- [ ]` tasks | *List Bullet*, *List Number*, *List Bullet 2* … *5* and *List Number 2* … *5* for nested levels (*List Paragraph* below), with Word numbering; ☐ / ☒ |
 | GFM tables with alignment, `Table: caption` after the table | *Markdown Table* with a repeating header row, *Table Text* |
 | definition lists (kramdown) | *Definition Term*, *Definition* |
-| `![alt](img.png "Title")` | the image, scaled to the text width, with the title as *caption* |
+| `![alt](img.png "Title")` | the image, scaled to the text width, with the title as *caption*; PNG, JPEG, GIF and SVG (see [SVG](#svg)) |
 | `![alt](img.png){: width="50%"}` | width/height in `%`, `px`, `pt`, `cm`, `mm`, `in` |
 | `{: #fig-x}` or `{#fig:x}` after an image, `{: #tbl-x}` under a table, `Table: caption {#tbl:x}` | numbered caption: **Figure 1:** caption (see below) |
 | `[](#id)`, `@fig:x`, `[@fig:x; @tbl:y]`, `[-@fig:x]` | cross-reference: *Figure 1*, a heading's text, or the number alone |
@@ -129,11 +131,11 @@ digraph { Markdown -> caracal -> Word }
 {: #fig-pipeline title="From Markdown to Word" width="60%"}
 ````
 
-A handler is anything that responds to `call(block)` and returns PNG, JPEG or GIF bytes. `block` is a `Caracal::Md::CodeBlock` with `language`, `source` and `attributes` (every attribute of the block as a String, so a handler can read its own, e.g. `theme="dark"`). `CommandHandler` is one such handler: it runs a program with the source on stdin and reads the image from stdout. Handlers for rendering services or other tools can come from any gem.
+A handler is anything that responds to `call(block)` and returns PNG, JPEG, GIF or SVG bytes (SVG goes through the [SVG](#svg) path). `block` is a `Caracal::Md::CodeBlock` with `language`, `source` and `attributes` (every attribute of the block as a String, so a handler can read its own, e.g. `theme="dark"`). `CommandHandler` is one such handler: it runs a program with the source on stdin and reads the image from stdout. Handlers for rendering services or other tools can come from any gem.
 
 **Untrusted documents.** Source and attributes come from whoever wrote the Markdown, and what a handler returns counts as untrusted, like an image from the web:
 
-* Only a non-empty String of at most 20 MB holding a PNG, JPEG or GIF with readable dimensions gets into the document. Anything else, an exception included, leaves the block as code and adds a warning.
+* Only a non-empty String of at most 20 MB holding a PNG, JPEG or GIF with readable dimensions, or an SVG, gets any further; SVG is then cleaned (see [SVG](#svg)). Anything else, an exception included, leaves the block as code and adds a warning.
 * At most 50 blocks run per document, and identical blocks run once. `Caracal::Md::CodeHandlers.new(handlers, max_calls: 50, max_bytes: 20 * 1024 * 1024)` sets other limits; pass it as `code_handlers:`.
 * `CommandHandler` takes the command as an argument list and never starts a shell; the source reaches the program on stdin only. The program runs in an empty temporary directory and in a process group of its own, which is killed when the program ends, after `timeout:` (30 seconds) or beyond `max_bytes:` of output.
 * Diagram tools read files. Graphviz embeds any image the process can read when a node says `image="/path/to/file.png"`, and Graphviz 14 has no setting against it; PlantUML has `!include`; mermaid-cli runs a headless browser. The empty working directory stops relative paths only. For untrusted Markdown, run the tool in a sandbox, e.g. bubblewrap on Linux; this command (tested with Graphviz 14 on Debian) gives `dot` read-only system files and no network, home or project files:
@@ -141,6 +143,33 @@ A handler is anything that responds to `call(block)` and returns PNG, JPEG or GI
 ```sh
 caracal-md notes.md --code-handler 'dot=bwrap --ro-bind /usr /usr --symlink usr/lib /lib --symlink usr/lib64 /lib64 --symlink usr/bin /bin --ro-bind /etc/fonts /etc/fonts --proc /proc --dev /dev --tmpfs /tmp --unshare-all --die-with-parent --new-session dot -Tpng'
 ```
+
+
+## SVG
+
+SVG images (`![plan](plan.svg)`, `data:image/svg+xml` URIs) and SVG from code handlers (e.g. `dot -Tsvg`) go into the document as SVG, cleaned, at the size the SVG declares. Word 2016 and later and LibreOffice show the SVG; older Word and other readers show a PNG fallback, which an SVG rasterizer makes. Without a rasterizer the fallback is blank.
+
+With caracal 2.0.0, which embeds no SVG (SVG support came after it), SVG goes in as the rasterizer's PNG alone; without a rasterizer it shows as its alt text (code blocks as code), with a warning.
+
+```ruby
+inkscape = 'inkscape --pipe --export-type=png --export-filename=- --export-dpi=192'
+Caracal::Md.render(markdown, svg_rasterizer: Caracal::Md::CommandHandler.new(inkscape))
+```
+
+```sh
+caracal-md notes.md --svg-rasterizer 'inkscape --pipe --export-type=png --export-filename=- --export-dpi=192'
+```
+
+A rasterizer is a code handler for the language `svg`: it receives a `CodeBlock` whose `source` is the cleaned SVG and returns PNG, JPEG or GIF bytes, checked like any handler's output. When it fails, the fallback is blank and a warning says so.
+
+**Cleaning.** Every SVG is cleaned before it goes into the document or to the rasterizer, because SVG renderers follow references: Inkscape, given `<image xlink:href="file:///…">`, draws whatever local image that names (tested with Inkscape 1.4). caracal-md parses the SVG without DTD, entities or network access and keeps an allowlist of SVG elements and attributes:
+
+* removed: scripts, event handlers (`onclick` …), `foreignObject`, animation (`set`, `animate` …), processing instructions, comments, elements and attributes of other namespaces (editor data), `xml:base`;
+* references: only `#id` and inline PNG, JPEG or GIF (`data:image/png;base64,…`) stay; `http:`, `file:`, `javascript:`, relative paths and other data are removed, and `use`, `image`, `feImage` and `textPath` without a reference with them;
+* CSS: `style` elements and declarations that load anything (`url()` other than `url(#id)`, `@import`, `image-set()`, escapes) are removed;
+* refused, the image then showing as alt text: entity declarations or an internal DTD, malformed XML or another root element than `svg`, more than 100,000 nodes, reference cycles, and `<use>` trees that expand beyond a million nodes.
+
+The warnings name what was removed. Run the rasterizer in a sandbox all the same (see [Diagrams](#diagrams)): the cleaning keeps it from reading files through the SVG, not from its own bugs.
 
 
 ## Templates
@@ -187,6 +216,7 @@ Keys are the style ids or names in the table above; values are style names or id
 | `highlight:` | `true` | syntax highlighting, when Rouge is installed |
 | `figure_captions:` | `:title` | caption from the image title, `:alt` or `:none` |
 | `code_handlers:` | `{}` | language ⇒ handler, or a `CodeHandlers` with limits: fenced blocks as images, see [Diagrams](#diagrams) |
+| `svg_rasterizer:` | none | handler turning cleaned SVG into the PNG fallback, see [SVG](#svg); without it the fallback is blank |
 | `number_captions:` | front matter, else `false` | `true` numbers every caption, `:chapter` per level-1 heading; figures and tables with an id are numbered either way |
 | `figure_label:`, `table_label:` | from `lang` | caption labels |
 | `lof:`, `lot:`, `lof_title:`, `lot_title:` | front matter, else off, *List of Figures*, *List of Tables* | lists of figures and tables |
@@ -220,13 +250,14 @@ Treat Markdown from users like any other input:
 * Remote images are off unless `allow_remote_images: true`. Turning them on lets the document's author make your server fetch URLs, internal ones included; consider an `image_loader` with an allowlist instead.
 * Raw OOXML is off unless `allow_raw_openxml: true`.
 * Code handlers get the block's source from the document and run what you configure; their output is checked like an image. See [Diagrams](#diagrams) for the limits and for sandboxing diagram tools.
+* SVG is cleaned before the rasterizer sees it, see [SVG](#svg).
 * Templates are read with a size limit per entry (`Caracal::Md::Package.max_entry_size`, 50 MB).
 
 
 ## How it works
 
 1. `FrontMatter` splits off the YAML; kramdown parses the rest.
-2. `Converter` walks the syntax tree and issues caracal commands, referring to styles by the ids in `Styles`; `CodeHandlers` turn fenced blocks into checked image bytes. What caracal has no command for (footnotes, list start numbers, caption numbers, cross-references, lists of figures) it marks with private-use characters.
+2. `Converter` walks the syntax tree and issues caracal commands, referring to styles by the ids in `Styles`; `CodeHandlers` turn fenced blocks into checked image bytes, `Svg` cleans SVG for the rasterizer. What caracal has no command for (footnotes, list start numbers, caption numbers, cross-references, lists of figures) it marks with private-use characters.
 3. caracal renders a complete package.
 4. With a template, `TemplateMerger` moves the body into a copy of the template: it resolves styles by name, numbers lists through the template's list styles where they have numbering (renumbering caracal's elsewhere), copies images and links, and fills the placeholders.
 5. `PostProcessor` turns the markers into footnotes, start numbers and fields (`SEQ`, `REF`, table of figures) with their results filled in, numbered in the final document order; `Language` and `CoreProperties` write `lang` and the document properties.
