@@ -38,7 +38,7 @@ SVG images need caracal's `master` (`branch: 'master'` in place of the tag) unti
 | Markdown | Word |
 |---|---|
 | `# Heading` … `######` | Heading 1–6, with a bookmark so `[link](#heading)` jumps there |
-| paragraphs, `**strong**`, `*em*`, `~~strike~~`, `` `code` `` | Normal, bold, italic, strikethrough, *Verbatim Char* |
+| paragraphs, `**strong**`, `*em*`, `~~strike~~`, `==highlight==`, `` `code` `` | Normal, bold, italic, strikethrough, highlight, *Verbatim Char* |
 | `<sup>`, `<sub>`, `<u>`, `<mark>`, `<kbd>` | superscript, subscript, underline, highlight, *Verbatim Char* |
 | links, autolinks | hyperlinks (*Hyperlink*); `javascript:` and other unknown schemes stay text |
 | `"quotes"`, `--`, `...` | typographic quotes (English, German or French), dashes, ellipsis |
