@@ -1,0 +1,87 @@
+#!/usr/bin/env ruby
+
+# Run from a source checkout, from any directory: use the project's Ruby
+# (.ruby-version, through rbenv) and load its bundle, which provides lib/ and
+# caracal from GitHub. An installed gem has no Gemfile here, and `bundle exec`
+# has set up a bundle already.
+root    = File.expand_path('..', __dir__)
+gemfile = File.join(root, 'Gemfile')
+if File.file?(gemfile) and not defined?(Bundler)
+  wanted = File.read(File.join(root, '.ruby-version')).strip.delete_prefix('ruby-') if File.file?(File.join(root, '.ruby-version'))
+  if wanted and wanted != RUBY_VERSION and not ENV['CARACAL_MD_REEXEC'] and
+     system('rbenv', 'prefix', wanted, out: File::NULL, err: File::NULL)
+    exec({ 'RBENV_VERSION' => wanted, 'CARACAL_MD_REEXEC' => '1' }, 'rbenv', 'exec', 'ruby', __FILE__, *ARGV)
+  end
+
+  ENV['BUNDLE_GEMFILE'] = gemfile
+  begin
+    require 'bundler/setup'
+  rescue StandardError => e
+    abort "caracal-md: #{e.message}\n" \
+          "caracal-md: run it with Ruby #{wanted || 'of the project'}, or install the bundle for Ruby #{RUBY_VERSION}: " \
+          "cd #{root} && bundle install"
+  end
+end
+
+require 'optparse'
+require 'caracal/md'
+
+options   = { variables: {}, style_map: {} }
+output    = nil
+reference = nil
+
+parser = OptionParser.new do |o|
+  o.banner = 'Usage: caracal-md [options] INPUT.md   (INPUT "-" reads stdin)'
+  o.separator ''
+  o.on('-o', '--output FILE', 'DOCX to write (default: INPUT with .docx)') { |v| output = v }
+  o.on('-t', '--template FILE', 'Word template (.docx/.dotx) providing styles, page setup, headers and footers') { |v| options[:template] = v }
+  o.on('-s', '--style-map FROM=TO', 'use template style TO for FROM (id or name), e.g. "Quote=Intense Quote"; repeatable') do |v|
+    from, to = v.split('=', 2)
+    options[:style_map][from] = to
+  end
+  o.on('-V', '--var KEY=VALUE', 'value for a {{KEY}} placeholder in the template; repeatable') do |v|
+    key, value = v.split('=', 2)
+    options[:variables][key] = value.to_s
+  end
+  o.on('--placeholder TEXT', 'template paragraph that receives the content (default {{content}})') { |v| options[:placeholder] = v }
+  o.on('--[no-]toc', 'add a table of contents (default: front matter "toc")') { |v| options[:toc] = v }
+  o.on('--toc-depth N', Integer, 'heading levels in the table of contents (default 3)') { |v| options[:toc_depth] = v }
+  o.on('--toc-title TEXT', 'table of contents heading') { |v| options[:toc_title] = v }
+  o.on('--[no-]title-block', 'render title, author and date from front matter') { |v| options[:title_block] = v }
+  o.on('--quotes STYLE', %i[en de fr], 'typographic quotes: en, de or fr (default: from front matter "lang")') { |v| options[:quotes] = v }
+  o.on('--page-size SIZE', %i[a4 letter], 'page size without template: a4 (default) or letter') { |v| options[:page_size] = v }
+  o.on('--[no-]highlight', 'syntax highlighting with Rouge, when installed (default on)') { |v| options[:highlight] = v }
+  o.on('--base-dir DIR', 'directory images are read from (default: the input file\'s)') { |v| options[:base_dir] = v }
+  o.on('--allow-remote-images', 'fetch http(s) images') { options[:allow_remote_images] = true }
+  o.on('--allow-raw-openxml', 'pass ```{=openxml} blocks through unchanged') { options[:allow_raw_openxml] = true }
+  o.on('--print-reference-doc FILE', 'write a document showing every default style and exit') { |v| reference = v }
+  o.on('-v', '--version') { puts Caracal::Md::VERSION; exit }
+  o.on('-h', '--help') { puts o; exit }
+end
+
+begin
+  input = parser.parse!(ARGV).first
+
+  if reference
+    File.binwrite(reference, Caracal::Md.reference_document)
+    exit
+  end
+  abort(parser.to_s) unless input
+
+  options.delete(:style_map) if options[:style_map].empty?
+  options.delete(:variables) if options[:variables].empty?
+  if input == '-'
+    markdown = $stdin.read
+    output ||= 'output.docx'
+  else
+    markdown = File.read(input, encoding: 'UTF-8')
+    output ||= input.sub(/\.(md|markdown|mdown|mkd)\z/i, '') + '.docx'
+    options[:base_dir] ||= File.dirname(File.expand_path(input))
+  end
+
+  renderer = Caracal::Md::Renderer.new(**options)
+  File.binwrite(output, renderer.render(markdown))
+  renderer.warnings.each { |warning| warn "caracal-md: #{warning}" }
+rescue OptionParser::ParseError, Caracal::Md::Error, SystemCallError => e
+  abort "caracal-md: #{e.message}"
+end

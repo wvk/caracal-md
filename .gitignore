@@ -1,0 +1,15 @@
+/.bundle/
+/vendor/
+/pkg/
+/tmp/
+/coverage/
+/spec/output/
+*.gem
+.rspec_status
+Gemfile.lock
+
+# Local notes
+/docs/IDEAS.md
+
+# LibreOffice lock files
+.~lock.*#
