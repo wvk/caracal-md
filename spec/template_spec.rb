@@ -110,6 +110,33 @@ RSpec.describe 'rendering into a Word template' do
     expect(renderer.warnings.join).to include('Nope')
   end
 
+  it "numbers captions with the template's caption and table of figures styles" do
+    markdown = <<~MD
+      ---
+      lang: de
+      number-captions: chapter
+      lof: true
+      ---
+      # Eins
+
+      ![A](a.png "Erste"){: #fig-a}
+
+      Siehe [](#fig-a).
+    MD
+    docx = Caracal::Md.render(markdown, template: TemplateBuilder.build(captions: true).to_s, image_loader: ->(_) { png })
+    doc  = document_xml(docx)
+    expect_well_formed(docx)
+
+    texts = ->(style) { doc.xpath("//w:body/w:p[w:pPr/w:pStyle/@w:val='#{style}']", NS).map { |p| p.xpath('.//w:t', NS).map(&:content).join } }
+    expect(texts.call('Beschriftung')).to eq(['Abbildung 1.1: Erste'])
+    expect(texts.call('Abbildungsverzeichnis')).to eq(['Abbildung 1.1: Erste#'])
+    expect(body_text(doc)).to include('Siehe Abbildung 1.1.')
+
+    heading = doc.at_xpath("//w:body/w:p[w:pPr/w:pStyle/@w:val='berschrift1']", NS)
+    expect(heading.xpath('.//w:instrText', NS).map { |i| i.content.strip }).to eq(['SEQ Chapter \h'])
+    expect(doc.xpath('//w:instrText', NS).map(&:content).join).to include('SEQ Abbildung', 'TOC \h \z \c "Abbildung"')
+  end
+
   describe 'lists' do
     let(:markdown) do
       <<~MD

@@ -24,6 +24,13 @@ module Caracal
         quotes:              nil,       # :en, :de, :fr or four kramdown entity names; nil: from lang
         highlight:           true,
         figure_captions:     :title,
+        number_captions:     nil,       # nil: front matter decides; true numbers every caption, :chapter per level-1 heading
+        figure_label:        nil,       # nil: from lang ("Figure", "Abbildung", …)
+        table_label:         nil,
+        lof:                 nil,       # list of figures after the table of contents; nil: front matter decides
+        lot:                 nil,       # list of tables
+        lof_title:           nil,
+        lot_title:           nil,
         page_size:           :a4,       # without template
         margins:             1440,      # twips, without template
         styles:              nil,       # callable(docx): adjust the default styles
@@ -50,7 +57,8 @@ module Caracal
         Styles.install(docx)
         @options[:styles]&.call(docx)
 
-        converter = Converter.new(converter_options(meta, template, docx))
+        captions  = captions(meta)
+        converter = Converter.new(converter_options(meta, template, docx).merge(captions: captions))
         converter.convert(body, docx, meta: meta)
         converter.define_custom_styles(docx)
         @options[:document]&.call(docx)
@@ -63,7 +71,7 @@ module Caracal
           package = merger.merge
           @warnings.concat merger.warnings
         end
-        PostProcessor.new(package).apply
+        PostProcessor.new(package, captions: captions).apply
         Language.apply(package, meta['lang']) if meta['lang']
         CoreProperties.apply(package, meta)
         package.to_s
@@ -102,7 +110,20 @@ module Caracal
           base_dir:            @options[:base_dir],
           allow_remote_images: @options[:allow_remote_images],
           lang:                lang,
+          lof:                 option_or_meta(:lof, meta['lof'], false),
+          lot:                 option_or_meta(:lot, meta['lot'], false),
         }
+      end
+
+      def captions(meta)
+        Captions.new(
+          mode:        option_or_meta(:number_captions, meta['number-captions'], false),
+          lang:        meta['lang'],
+          labels:      { figure: option_or_meta(:figure_label, meta['figure-label'], nil),
+                         table:  option_or_meta(:table_label, meta['table-label'], nil) },
+          list_titles: { figure: option_or_meta(:lof_title, meta['lof-title'], nil),
+                         table:  option_or_meta(:lot_title, meta['lot-title'], nil) },
+        )
       end
 
       def option_or_meta(key, meta_value, default)

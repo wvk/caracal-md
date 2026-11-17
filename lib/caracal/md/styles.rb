@@ -52,6 +52,7 @@ module Caracal
         { id: 'Hyperlink',         name: 'Hyperlink',          type: :character, color: '0563C1', underline: true },
         { id: 'TOCHeading',        name: 'TOC Heading',        font: HEADING_FONT, size: 30, color: ACCENT_COLOR, top: 240, bottom: 160 },
         *(1..6).map { |level| { id: "TOC#{level}", name: "toc #{level}", size: 22, top: 0, bottom: 60, indent_left: (level - 1) * 220, bold: level == 1 } },
+        { id: 'TableofFigures',    name: 'table of figures',   size: 22, top: 0, bottom: 60 },
       ].freeze
 
       TABLE_STYLE = {

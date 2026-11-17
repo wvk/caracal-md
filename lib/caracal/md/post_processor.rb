@@ -4,7 +4,8 @@ module Caracal
     #
     # * fn:N runs become footnote references, and the paragraphs between
     #   fn-start:N and fn-end:N move into word/footnotes.xml;
-    # * an ol-start:N run sets the start number of its list.
+    # * an ol-start:N run sets the start number of its list;
+    # * caption, ref and list markers become fields (see CaptionFields).
     class PostProcessor
       NS = Package::NS
       W  = NS['w']
@@ -17,14 +18,16 @@ module Caracal
         </w:footnotes>
       XML
 
-      def initialize(package)
-        @package = package
-        @main    = package.main_part
-        @doc     = package.xml(@main)
+      def initialize(package, captions: nil)
+        @package  = package
+        @captions = captions
+        @main     = package.main_part
+        @doc      = package.xml(@main)
       end
 
       def apply
         markers = collect_markers
+        CaptionFields.new(@package, @captions).apply(markers) if @captions
         list_starts(markers['ol-start'] || [])
         footnotes(markers) if markers['fn-start']
         @package

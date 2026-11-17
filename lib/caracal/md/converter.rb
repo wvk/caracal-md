@@ -79,7 +79,18 @@ module Caracal
         base_dir:          nil,
         allow_remote_images: false,
         lang:              nil,
+        captions:          nil,             # Captions: numbered captions and cross-references (need PostProcessor)
+        lof:               false,           # list of figures after the table of contents
+        lot:               false,           # list of tables after the table of contents
       }.freeze
+
+      # pandoc-crossref references: @fig:id, [@fig:id], [-@fig:id] (number
+      # only), [@fig:a; @tbl:b].
+      CROSS_REF_LABEL = /[Ff]ig:[\w.:-]*\w|[Tt]bl:[\w.:-]*\w/
+      CROSS_REF = /\[(-?@(?:#{CROSS_REF_LABEL})(?:\s*;\s*-?@(?:#{CROSS_REF_LABEL}))*)\]|(?<![\w@])@(#{CROSS_REF_LABEL})/
+
+      # A pandoc attribute right after an image: {#id}.
+      PANDOC_ID = /\A\{#([^\s{}]+)\}/
 
       attr_reader :warnings, :custom_styles
 
@@ -99,6 +110,10 @@ module Caracal
         @custom_styles = {}  # id => { name:, type: }
         @bookmarks     = {}  # markdown id => bookmark name
         @footnotes     = []  # [number, definition element]
+        @captions      = @options[:captions]
+        @targets       = []  # ids with a bookmark: headings and numbered captions
+        @referenced    = []  # ids cross-references point to
+        @caption_count = 0
         @image_loader  = @options[:image_loader] ||
           ImageLoader.new(base_dir: @options[:base_dir] || Dir.pwd, allow_remote: @options[:allow_remote_images])
         @highlighter   = Highlighter.new(theme: @options[:highlight_theme]) if @options[:highlight] and Highlighter.available?
@@ -108,10 +123,19 @@ module Caracal
       # the title block.
       def convert(markdown, target, meta: {})
         root = parse(markdown)
+        lof = (@options[:lof] and not contains_directive?(root, :lof))
+        lot = (@options[:lot] and not contains_directive?(root, :lot))
+        # a list of figures or tables lists numbered captions, so it numbers all
+        @number_all = (@captions and (@captions.number_all? or @options[:lof] or @options[:lot] or
+                                      contains_directive?(root, :lof) or contains_directive?(root, :lot)))
+
         title_block(meta, target) if @options[:title_block]
-        toc(target) if @options[:toc] and not contains_toc_directive?(root)
+        toc(target) if @options[:toc] and not contains_directive?(root, :toc)
+        list_of_captions(:figure, target) if lof
+        list_of_captions(:table, target) if lot
         blocks(root.children, target, {})
         footnote_section(target)
+        (@referenced.uniq - @targets).each { |id| warn "cross-reference to ##{id}: no heading, figure or table has this id" }
         target
       end
 
@@ -138,8 +162,14 @@ module Caracal
       def parse(markdown)
         doc = Kramdown::Document.new(markdown.to_s, kramdown_options)
         @smart_quotes = doc.options[:smart_quotes]
-        @warnings.concat doc.warnings
+        @warnings.concat(doc.warnings.reject { |message| crossref_link_warning?(message) })
         doc.root
+      end
+
+      # kramdown reads [@fig:id] as a reference link without definition.
+      def crossref_link_warning?(message)
+        id = message[/\ANo link definition for link ID '(.*)' found/, 1]
+        (@captions and id and "[#{id}]".match?(/\A#{CROSS_REF}\z/))
       end
 
       def kramdown_options
@@ -168,7 +198,7 @@ module Caracal
 
           if el.type == :table and (caption = table_caption(elements[index + 1]))
             @consumed = elements[index + 1]
-            table(el, target, ctx, caption: caption)
+            table(el, target, ctx, caption: caption[:text], caption_id: caption[:id])
           else
             block(el, target, ctx)
           end
@@ -203,12 +233,21 @@ module Caracal
         end
 
         style = paragraph_style(el, ctx[:style] || 'Normal')
-        inline_blocks(el.children, target, ctx, style: style, align: ctx[:align])
+        inline_blocks(el.children, target, ctx, style: style, align: ctx[:align], figure_id: figure_id(el))
+      end
+
+      # The id of a paragraph holding only an image belongs to the image.
+      def figure_id(el)
+        return unless el.attr['id']
+
+        kids = el.children.reject { |child| whitespace?(child) }
+        el.attr['id'] if kids.size == 1 and image_element(kids.first)
       end
 
       # Emits inline content as paragraphs, splitting it at images and
       # directives, which caracal places between paragraphs.
-      def inline_blocks(children, target, ctx, style:, align: nil, empty: false)
+      def inline_blocks(children, target, ctx, style:, align: nil, empty: false, figure_id: nil)
+        children = pandoc_ids(children)
         emitted = false
         buffer  = []
         flush = lambda do
@@ -225,7 +264,7 @@ module Caracal
           data  = image && load_image(image)
           if data
             flush.call
-            image(image, target, ctx, data)
+            image(image, target, ctx, data, id: image.attr['id'] || figure_id)
             emitted = true
           elsif child.type == :xml_comment and (kind = comment_directive(child.value))
             flush.call
@@ -236,6 +275,19 @@ module Caracal
         end
         flush.call
         emit_paragraph(target, [], style: style, align: align) if empty and not emitted
+      end
+
+      # A pandoc attribute {#id} right after an image gives the image its id
+      # and leaves the text.
+      def pandoc_ids(children)
+        children.each_with_index.map do |child, index|
+          image = (index.positive? and image_element(children[index - 1]))
+          match = child.value.match(PANDOC_ID) if image and child.type == :text
+          next child unless match
+
+          image.attr['id'] ||= match[1]
+          Kramdown::Element.new(:text, match.post_match)
+        end
       end
 
       def emit_paragraph(target, children, style:, align: nil, fmt: {})
@@ -253,6 +305,7 @@ module Caracal
           if id.empty?
             inlines(el.children, p, {})
           else
+            @targets << id
             name = bookmark_name(id)
             p.bookmark_start id: name, name: name
             inlines(el.children, p, {})
@@ -405,7 +458,7 @@ module Caracal
         end
       end
 
-      def table(el, target, ctx, caption: nil)
+      def table(el, target, ctx, caption: nil, caption_id: nil)
         alignments  = el.options[:alignment] || []
         header_rows = 0
         source_rows = []
@@ -435,7 +488,12 @@ module Caracal
 
         options = { style: el.attr['custom-style'] ? custom_style(el.attr['custom-style'], :table) : 'MarkdownTable', column_widths: widths }
         options[:repeat_header] = header_rows if header_rows.positive?
-        options[:caption] = caption if caption
+        id = el.attr['id'] || caption_id
+        if numbered_caption?(caption, id)
+          numbered_caption(target, :table, caption.to_s, id, keep_next: true)
+        elsif caption and not caption.empty?
+          options[:caption] = caption
+        end
         target.table(rows, options) do |t|
           t.look first_row: header_rows.positive?
         end
@@ -453,12 +511,102 @@ module Caracal
         widths
       end
 
-      # A paragraph right after a table reading "Table: ..." captions it.
+      # A paragraph right after a table reading "Table: ..." captions it; a
+      # trailing {#id} gives the table its id. Returns { text:, id: }.
       def table_caption(el)
         return unless el&.type == :p
 
         text = plain_text(el)
-        text.sub(/\A(?:Table)?:\s+/, '') if text.match?(/\A(?:Table)?:\s+\S/)
+        return unless text.match?(/\A(?:Table)?:\s+\S/)
+
+        text = text.sub(/\A(?:Table)?:\s+/, '')
+        id   = text[/\s*\{#([^\s{}]+)\}\s*\z/, 1]
+        { text: id ? text.sub(/\s*\{#[^\s{}]+\}\s*\z/, '') : text, id: id }
+      end
+
+      #========== NUMBERED CAPTIONS, CROSS-REFERENCES =========
+
+      # Captions are numbered for figures and tables with an id, and all of
+      # them with number_captions or a list of figures or tables.
+      def numbered_caption?(caption, id)
+        return false unless @captions
+
+        id ? true : (@number_all and not caption.to_s.strip.empty?)
+      end
+
+      # "Figure N: text" in the Caption style, N being a marker PostProcessor
+      # turns into a SEQ field. A bookmark spans label and number, the target
+      # of cross-references and of the list of figures; with an id, a second
+      # one spans the number alone.
+      def numbered_caption(target, kind, text, id, keep_next: false)
+        @targets << id if id
+        name    = id ? bookmark_name(id) : "_Cap#{@caption_count += 1}"
+        options = { style: 'Caption' }
+        options[:keep_next] = true if keep_next
+
+        target.p(options) do |p|
+          p.bookmark_start id: name, name: name
+          p.text "#{@captions.label(kind)} ", bold: true
+          p.bookmark_start id: number_bookmark(name), name: number_bookmark(name) if id
+          p.text Converter.marker("caption-#{kind}", 0), bold: true
+          p.bookmark_end id: number_bookmark(name) if id
+          p.bookmark_end id: name
+          unless text.empty?
+            p.text ':', bold: true
+            p.text " #{text}"
+          end
+        end
+      end
+
+      def number_bookmark(name)
+        "_N#{name}"
+      end
+
+      # A ref marker PostProcessor turns into a REF field showing the
+      # bookmarked label and number (or heading text), or the number alone.
+      def reference(p, id, fmt, source:, number_only: false)
+        @referenced << id
+        name = bookmark_name(id)
+        name = number_bookmark(name) if number_only
+        text(p, Converter.marker('ref', @captions.reference(name, source)), fmt)
+      end
+
+      # Text with pandoc-crossref references turned into ref markers.
+      def text_with_references(p, content, fmt)
+        return text(p, content, fmt) unless @captions
+
+        last = 0
+        content.scan(CROSS_REF) do
+          match = Regexp.last_match
+          text(p, content[last...match.begin(0)], fmt)
+          if match[1]
+            items = match[1].split(/\s*;\s*/)
+            items.each_with_index do |item, index|
+              text(p, ', ', fmt) if index.positive?
+              label = item.sub(/\A-?@/, '')
+              source = items.size == 1 ? match[0] : item
+              reference(p, crossref_id(label), fmt, source: source, number_only: item.start_with?('-'))
+            end
+          else
+            reference(p, crossref_id(match[2]), fmt, source: match[0])
+          end
+          last = match.end(0)
+        end
+        text(p, content[last..], fmt)
+      end
+
+      # @Fig:x refers to fig:x.
+      def crossref_id(label)
+        label.sub(/\A[FT]/) { |c| c.downcase }
+      end
+
+      def list_of_captions(kind, target)
+        return warn('a list of figures or tables needs the Renderer') unless @captions
+        return warn('a list of figures or tables fits in the document body only') unless target.respond_to?(:toc)
+
+        target.p @captions.list_title(kind), style: 'TOCHeading'
+        # the style passes the template merge with the marker, for the entries
+        target.p Converter.marker("list-#{kind}", 0), style: 'TableofFigures'
       end
 
       def html_block(el, target, ctx)
@@ -519,7 +667,7 @@ module Caracal
         data
       end
 
-      def image(el, target, ctx, data = load_image(el))
+      def image(el, target, ctx, data = load_image(el), id: el.attr['id'])
         src = el.attr['src'].to_s
         alt = el.attr['alt'].to_s
         return emit_paragraph(target, [Kramdown::Element.new(:text, alt.empty? ? src : alt)], style: ctx[:style] || 'Normal', fmt: { italic: true }) unless data
@@ -531,7 +679,15 @@ module Caracal
                   when :title then el.attr['title']
                   when :alt   then alt
                   end
-        target.p(caption, style: 'Caption') unless caption.to_s.strip.empty?
+        return if @options[:figure_captions] == :none
+
+        # a figure with an id takes its caption from the alt text, as in pandoc
+        caption = alt if id and caption.to_s.strip.empty?
+        if numbered_caption?(caption, id)
+          numbered_caption(target, :figure, caption.to_s.strip, id)
+        elsif not caption.to_s.strip.empty?
+          target.p(caption, style: 'Caption')
+        end
       end
 
       # Size in points: the image's own size, or width/height attributes,
@@ -582,7 +738,7 @@ module Caracal
         end
 
         case el.type
-        when :text            then text(p, el.value.tr("\n", ' '), fmt)
+        when :text            then text_with_references(p, el.value.tr("\n", ' '), fmt)
         when :strong          then inlines(el.children, p, fmt.merge(bold: true))
         when :em              then inlines(el.children, p, fmt.merge(italic: true))
         when :codespan        then text(p, el.value, fmt.merge(style: 'VerbatimChar'))
@@ -623,6 +779,11 @@ module Caracal
       def link(el, p, fmt)
         href    = el.attr['href'].to_s.strip
         content = plain_text(el)
+        # [](#id) shows the target's label and number, or its heading text
+        if @captions and content.empty? and href.start_with?('#') and href.length > 1
+          return reference(p, href[1..], fmt, source: href)
+        end
+
         content = href if content.empty?
         fmt     = fmt.merge(link_format(el)).merge(style: 'Hyperlink')
 
@@ -726,12 +887,15 @@ module Caracal
         when :toc then toc(target)
         when :pagebreak
           target.respond_to?(:page) ? target.page : warn('page breaks fit in the document body only')
+        when :lof then list_of_captions(:figure, target)
+        when :lot then list_of_captions(:table, target)
         end
       end
 
       DIRECTIVE_TEXT = {
         '\\newpage' => :pagebreak, '\\pagebreak' => :pagebreak,
         '[TOC]' => :toc, '[[_TOC_]]' => :toc, '[[TOC]]' => :toc, '${toc}' => :toc,
+        '\\listoffigures' => :lof, '\\listoftables' => :lot,
       }.freeze
 
       def paragraph_directive(el)
@@ -744,6 +908,8 @@ module Caracal
         case value.to_s.sub(/\A<!--/, '').sub(/-->\z/, '').strip.downcase
         when 'pagebreak', 'newpage', 'page-break', 'new-page' then :pagebreak
         when 'toc', 'table-of-contents' then :toc
+        when 'lof', 'list-of-figures' then :lof
+        when 'lot', 'list-of-tables' then :lot
         end
       end
 
@@ -751,12 +917,12 @@ module Caracal
         Array(el.options.dig(:ial, :refs)).include?('toc')
       end
 
-      def contains_toc_directive?(el)
-        return true if el.type == :p and paragraph_directive(el) == :toc
-        return true if el.type == :xml_comment and comment_directive(el.value) == :toc
-        return true if %i[ul ol].include?(el.type) and toc_ial?(el)
+      def contains_directive?(el, kind)
+        return true if el.type == :p and paragraph_directive(el) == kind
+        return true if el.type == :xml_comment and comment_directive(el.value) == kind
+        return true if kind == :toc and %i[ul ol].include?(el.type) and toc_ial?(el)
 
-        el.children.any? { |child| contains_toc_directive?(child) }
+        el.children.any? { |child| contains_directive?(child, kind) }
       end
 
       #========== HELPERS =====================================

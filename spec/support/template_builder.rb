@@ -35,7 +35,7 @@ module TemplateBuilder
     </w:abstractNum>
   XML
 
-  def self.build(placeholder: true, footnotes: false, lists: false)
+  def self.build(placeholder: true, footnotes: false, lists: false, captions: false)
     docx = Caracal::Document.new
     docx.page_size width: 12240, height: 15840
     docx.page_margins left: 2000, right: 2000, top: 1440, bottom: 1440
@@ -59,7 +59,16 @@ module TemplateBuilder
                          'application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml')
     add_footnotes(package) if footnotes
     add_lists(package) if lists
+    add_caption_styles(package) if captions
     package
+  end
+
+  # caption (caracal's, renamed) and table of figures, under German Word's ids.
+  def self.add_caption_styles(package)
+    styles = package.xml('word/styles.xml')
+    styles.at_xpath("//w:style[@w:styleId='Caption']", 'w' => W)['w:styleId'] = 'Beschriftung'
+    styles.root.add_child(%(<w:style w:type="paragraph" w:styleId="Abbildungsverzeichnis"><w:name w:val="table of figures"/>) +
+                          %(<w:basedOn w:val="Standard"/><w:rPr><w:color w:val="C00000"/></w:rPr></w:style>))
   end
 
   def self.add_lists(package)

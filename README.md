@@ -48,11 +48,14 @@ gem 'rouge' # optional: syntax highlighting of fenced code
 | definition lists (kramdown) | *Definition Term*, *Definition* |
 | `![alt](img.png "Title")` | the image, scaled to the text width, with the title as *caption* |
 | `![alt](img.png){: width="50%"}` | width/height in `%`, `px`, `pt`, `cm`, `mm`, `in` |
+| `{: #fig-x}` or `{#fig:x}` after an image, `{: #tbl-x}` under a table, `Table: caption {#tbl:x}` | numbered caption: **Figure 1:** caption (see below) |
+| `[](#id)`, `@fig:x`, `[@fig:x; @tbl:y]`, `[-@fig:x]` | cross-reference: *Figure 1*, a heading's text, or the number alone |
 | footnotes `[^1]` | real Word footnotes (*footnote text*, *footnote reference*) |
 | `---` | horizontal rule |
 | `{: custom-style="Name"}` after a block or span | the paragraph, character or table style *Name* |
 | `<!-- pagebreak -->`, `\newpage` | page break |
 | `<!-- toc -->`, `[TOC]`, `[[_TOC_]]`, or `toc: true` | table of contents (Word fills in page numbers on open) |
+| `<!-- list-of-figures -->`, `\listoffigures`, or `lof: true`; the same for tables with `list-of-tables`, `\listoftables`, `lot: true` | list of figures or tables (*table of figures*) |
 | `$$math$$` | the TeX source as code |
 | ```` ```{=openxml} ```` | passed through as raw OOXML, only with `allow_raw_openxml: true` |
 
@@ -70,8 +73,34 @@ lang: de          # German quotes, spelling language de-DE, "Inhalt" as TOC titl
 toc: true
 toc-depth: 2
 toc-title: Inhalt
+number-captions: true   # every caption numbered; "chapter" numbers per level-1 heading
+lof: true               # list of figures after the table of contents
 ---
 ```
+
+
+## Numbered captions and cross-references
+
+Captions are numbered the way Word numbers them, with fields: **Figure 1:** caption below an image, **Table 1:** caption above a table. Figures and tables with an id get a number; `number-captions: true` numbers every caption, and `number-captions: chapter` restarts the count at each level-1 heading (**Figure 2.1:**). Labels follow `lang` (Figure/Table, Abbildung/Tabelle, …) unless `figure-label:` and `table-label:` name others.
+
+```markdown
+![Architecture](arch.png "System architecture"){: #fig-arch}
+
+See [](#fig-arch) and @tbl:revenue.
+
+| Quarter | Revenue |
+|---------|--------:|
+| Q1      |      10 |
+
+Table: Revenue by quarter {#tbl:revenue}
+```
+
+The paragraph reads "See Figure 1 and Table 1." Both kramdown and pandoc-crossref syntax work:
+
+* An image takes an id from `{: #fig-arch}` right after it or on the line below, or from pandoc's `{#fig:arch}`; a pandoc figure without title takes its caption from the alt text. A table takes `{: #tbl-x}` on the line below it, or `{#tbl:x}` at the end of its caption.
+* A link without text, `[](#id)`, shows the label and number, or a heading's text. `@fig:id`, `[@fig:id]` and `[@fig:a; @tbl:b]` do the same; `[-@fig:id]` shows the number alone. A link with text, `[the diagram](#fig-arch)`, stays a link.
+* References are `REF` fields with their text filled in; Word updates them with the other fields.
+* `<!-- list-of-figures -->` or `lof: true` (placed after the table of contents) adds Word's table of figures, `<!-- list-of-tables -->` or `lot: true` the list of tables. Either numbers every caption, and Word fills in the page numbers on open.
 
 
 ## Templates
@@ -117,6 +146,9 @@ Keys are the style ids or names in the table above; values are style names or id
 | `quotes:` | from `lang`, else `:en` | `:en`, `:de`, `:fr` or four kramdown entity names |
 | `highlight:` | `true` | syntax highlighting, when Rouge is installed |
 | `figure_captions:` | `:title` | caption from the image title, `:alt` or `:none` |
+| `number_captions:` | front matter, else `false` | `true` numbers every caption, `:chapter` per level-1 heading; figures and tables with an id are numbered either way |
+| `figure_label:`, `table_label:` | from `lang` | caption labels |
+| `lof:`, `lot:`, `lof_title:`, `lot_title:` | front matter, else off, *List of Figures*, *List of Tables* | lists of figures and tables |
 | `page_size:`, `margins:` | `:a4`, `1440` | without a template; margins in twips |
 | `styles:` | none | `->(docx) { docx.style id: 'Normal', font: 'Georgia' }` to adjust the default styles |
 | `document:` | none | `->(docx) { docx.footer { p 'Draft' } }` to add caracal content before rendering |
@@ -136,7 +168,7 @@ Caracal::Document.save 'report.docx' do |docx|
 end
 ```
 
-Here footnotes become a numbered list after the content: Word footnotes need the finished package, which `Caracal::Md.render` builds.
+Here footnotes become a numbered list after the content, captions stay unnumbered and `[](#id)` stays a plain link: Word footnotes and fields need the finished package, which `Caracal::Md.render` builds.
 
 
 ## Security
@@ -152,10 +184,10 @@ Treat Markdown from users like any other input:
 ## How it works
 
 1. `FrontMatter` splits off the YAML; kramdown parses the rest.
-2. `Converter` walks the syntax tree and issues caracal commands, referring to styles by the ids in `Styles`. What caracal has no command for (footnotes, list start numbers) it marks with private-use characters.
+2. `Converter` walks the syntax tree and issues caracal commands, referring to styles by the ids in `Styles`. What caracal has no command for (footnotes, list start numbers, caption numbers, cross-references, lists of figures) it marks with private-use characters.
 3. caracal renders a complete package.
 4. With a template, `TemplateMerger` moves the body into a copy of the template: it resolves styles by name, numbers lists through the template's list styles where they have numbering (renumbering caracal's elsewhere), copies images and links, and fills the placeholders.
-5. `PostProcessor` turns the markers into footnotes and start numbers; `Language` and `CoreProperties` write `lang` and the document properties.
+5. `PostProcessor` turns the markers into footnotes, start numbers and fields (`SEQ`, `REF`, table of figures) with their results filled in, numbered in the final document order; `Language` and `CoreProperties` write `lang` and the document properties.
 
 
 ## Development

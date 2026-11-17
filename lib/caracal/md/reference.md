@@ -7,6 +7,7 @@ abstract: |
   This document shows each style once. Change the styles in Word (not the text:
   only styles, page setup, headers and footers carry over), save it as a
   template and pass it to caracal-md as `template:`.
+number-captions: true
 ---
 
 # Heading 1
@@ -64,5 +65,9 @@ Definition Term
 : Definition
 
 ![Figure](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAAB4CAIAAAAMrLyJAAAACXBIWXMAAA7EAAAOxAGVKw4bAAABOklEQVR42u3TMQ0AIAwAwTrBEX4QiwIEsNYAC1shl5yCTz5aH8CjQgIwMGBgwMBgYMDAgIGBi4Hn2kARBgYDAwYGDAwGNjAYGDAwYGAwMGBgwMBgYAODgQEDAwYGAxsYDAwYGDAwGBgwMGBgMLCBwcCAgQEDg4ENDAYGDAwYGAwMGBgwMBjYwGBgwMCAgcHABgYDAwYGAxsYDAwYGDAwGNjAYGDAwICBwcCAgQEDg4ENDAYGDAwYGAxsYDAwYGDAwGBgwMCAgcHABgYDAwYGDAwGNjAYGDAwYGAwMGBgwMBgYAODgQEDAwYGA0sGBgYMDAY2MBgYMDBgYDCwgcHAgIEBA4OBAQMDBgYDGxgMDBgYMDAY2MBgYMDAgIHBwICBAQODgQ0M/w4M1GdgMDBgYMDAYGDAwICBgYMEjDEIxjt7hvcAAAAASUVORK5CYII= "Caption")
+
+A list of figures: a *TOC Heading* and an entry in *table of figures* per caption.
+
+<!-- list-of-figures -->
 
 [^note]: Footnote Text with its Footnote Reference.
