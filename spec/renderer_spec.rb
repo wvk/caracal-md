@@ -43,6 +43,23 @@ RSpec.describe Caracal::Md::Renderer do
     expect(numbering.at_xpath("//w:num/w:lvlOverride/w:startOverride[@w:val='3']", NS)).not_to be_nil
   end
 
+  it 'styles list items by type and level, numbered by caracal' do
+    doc = document_xml(Caracal::Md.render("- a\n  1. b\n     - c\n       - d\n         - e\n           - f\n"))
+    items = doc.xpath('//w:body/w:p[w:pPr/w:numPr/w:numId]', NS)
+    expect(items.map { |p| p.at_xpath('w:pPr/w:pStyle/@w:val', NS).value })
+      .to eq(%w[ListBullet ListNumber2 ListBullet3 ListBullet4 ListBullet5 ListParagraph])
+    expect(items.map { |p| p.at_xpath('w:pPr/w:numPr/w:ilvl/@w:val', NS).value }).to eq(%w[0 1 2 3 4 5])
+  end
+
+  it 'names the list styles like Word and bases them on List Paragraph' do
+    styles = package(docx).xml('word/styles.xml')
+    { 'ListBullet' => 'List Bullet', 'ListNumber3' => 'List Number 3' }.each do |id, name|
+      style = styles.at_xpath("//w:style[@w:styleId='#{id}']", NS)
+      expect(style.at_xpath('w:name/@w:val', NS).value).to eq(name)
+      expect(style.at_xpath('w:basedOn/@w:val', NS).value).to eq('ListParagraph')
+    end
+  end
+
   it 'renders task lists, code, tables, definition lists and custom styles' do
     text = body_text(doc)
     expect(text).to include("☐ open", "☒ done")

@@ -11,6 +11,9 @@ module Caracal
       ACCENT_COLOR = '1F4E79'.freeze
       MUTED_COLOR  = '595959'.freeze
 
+      # Word has five list styles per kind; deeper items use List Paragraph.
+      LIST_STYLE_LEVELS = 5
+
       HEADING = { font: HEADING_FONT, color: ACCENT_COLOR, keep_next: true, keep_lines: true, line: 240, line_rule: :auto }.freeze
 
       DEFINITIONS = [
@@ -36,6 +39,10 @@ module Caracal
           { id: id, name: name, indent_left: 284, bottom: 80, border_left: { color: color, size: 18, spacing: 8 } }
         end,
         { id: 'ListParagraph',     name: 'List Paragraph',     bottom: 60 },
+        *%w[Bullet Number].product((1..LIST_STYLE_LEVELS).to_a).map do |kind, level|
+          suffix = level > 1 ? level.to_s : ''
+          { id: "List#{kind}#{suffix}", name: "List #{kind} #{suffix}".strip, base: 'ListParagraph' }
+        end,
         { id: 'TableText',         name: 'Table Text',         size: 20, top: 40, bottom: 40, line: 240, line_rule: :auto },
         { id: 'DefinitionTerm',    name: 'Definition Term',    bold: true, bottom: 0, keep_next: true },
         { id: 'Definition',        name: 'Definition',         indent_left: 567 },
@@ -64,6 +71,16 @@ module Caracal
       # Every style id the converter may use.
       def self.ids
         DEFINITIONS.map { |d| d[:id] } + [TABLE_STYLE[:id]]
+      end
+
+      # The style id of a list item: List Bullet or List Number for the first
+      # level, List Bullet 2 … 5 or List Number 2 … 5 below it. +level+ is
+      # zero-based, +type+ :ordered or :unordered.
+      def self.list_style(type, level)
+        return 'ListParagraph' if level >= LIST_STYLE_LEVELS
+
+        kind = type == :ordered ? 'Number' : 'Bullet'
+        "List#{kind}#{level + 1 if level.positive?}"
       end
 
       # Defines the style set on a caracal document. With only_missing, styles

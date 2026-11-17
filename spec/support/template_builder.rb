@@ -14,7 +14,28 @@ module TemplateBuilder
     'Hyperlink' => 'Hyperlink',
   }.freeze
 
-  def self.build(placeholder: true, footnotes: false)
+  # German ids of List Bullet, List Bullet 2 and List Number with their
+  # numbering, as Word writes it: List Bullet and List Bullet 2 share a
+  # multi-level definition and name their level; List Number has a
+  # definition of its own that links back to the style. There is no List
+  # Bullet 3 or List Number 2.
+  LIST_STYLES = {
+    'Aufzhlungszeichen'  => ['List Bullet', '<w:ilvl w:val="0"/><w:numId w:val="90"/>'],
+    'Aufzhlungszeichen2' => ['List Bullet 2', '<w:ilvl w:val="1"/><w:numId w:val="90"/>'],
+    'Listennummer'       => ['List Number', '<w:numId w:val="91"/>'],
+  }.freeze
+
+  LIST_NUMBERING = <<~XML.freeze
+    <w:abstractNum w:abstractNumId="90"><w:multiLevelType w:val="multilevel"/>
+      <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:pStyle w:val="Aufzhlungszeichen"/><w:lvlText w:val="–"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="284" w:hanging="284"/></w:pPr></w:lvl>
+      <w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:pStyle w:val="Aufzhlungszeichen2"/><w:lvlText w:val="▪"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="568" w:hanging="284"/></w:pPr></w:lvl>
+    </w:abstractNum>
+    <w:abstractNum w:abstractNumId="91"><w:multiLevelType w:val="singleLevel"/>
+      <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:pStyle w:val="Listennummer"/><w:lvlText w:val="%1)"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="284" w:hanging="284"/></w:pPr></w:lvl>
+    </w:abstractNum>
+  XML
+
+  def self.build(placeholder: true, footnotes: false, lists: false)
     docx = Caracal::Document.new
     docx.page_size width: 12240, height: 15840
     docx.page_margins left: 2000, right: 2000, top: 1440, bottom: 1440
@@ -37,7 +58,20 @@ module TemplateBuilder
     package.set_override('word/document.xml',
                          'application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml')
     add_footnotes(package) if footnotes
+    add_lists(package) if lists
     package
+  end
+
+  def self.add_lists(package)
+    styles = package.xml('word/styles.xml')
+    LIST_STYLES.each do |id, (name, num_pr)|
+      styles.root.add_child(%(<w:style w:type="paragraph" w:styleId="#{id}"><w:name w:val="#{name}"/><w:basedOn w:val="Standard"/>) +
+                            %(<w:pPr><w:numPr>#{num_pr}</w:numPr><w:spacing w:after="40"/></w:pPr></w:style>))
+    end
+
+    root = package.xml('word/numbering.xml').root
+    root.at_xpath('w:num', 'w' => W).add_previous_sibling(root.parse(LIST_NUMBERING))
+    root.add_child(root.parse(%(<w:num w:numId="90"><w:abstractNumId w:val="90"/></w:num><w:num w:numId="91"><w:abstractNumId w:val="91"/></w:num>)))
   end
 
   def self.rename_styles(package)

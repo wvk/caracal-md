@@ -110,6 +110,127 @@ RSpec.describe 'rendering into a Word template' do
     expect(renderer.warnings.join).to include('Nope')
   end
 
+  describe 'lists' do
+    let(:markdown) do
+      <<~MD
+        - one
+        - two
+          - two a
+
+          after nested
+          - two b
+            - deep
+
+        1. first
+        2. second
+           1. nested one
+        3. third
+           1. nested again
+
+        Between.
+
+        3. three
+        4. four
+
+        > - quoted
+      MD
+    end
+    let(:template)  { TemplateBuilder.build(lists: true) }
+    let(:docx)      { Caracal::Md.render(markdown, template: template.to_s) }
+    let(:numbering) { pkg.xml('word/numbering.xml') }
+
+    it 'writes well-formed parts' do
+      expect_well_formed(docx)
+    end
+
+    it 'gives bullets the template styles by level and their numbering' do
+      expect(style_of('one')).to eq('Aufzhlungszeichen')
+      expect(style_of('two a')).to eq('Aufzhlungszeichen2')
+      %w[one two\ a two\ b].each do |text|
+        expect(paragraph(text).at_xpath('w:pPr/w:numPr | w:pPr/w:ind | w:pPr/w:contextualSpacing', NS)).to be_nil
+      end
+    end
+
+    it 'gives every numbered list its own numbering on the template definition' do
+      first, third, three = %w[first third three].map { |text| num_pr(text) }
+      expect(style_of('first')).to eq('Listennummer')
+      expect(first).to eq(third)
+      expect(three).not_to eq(first)
+      [first, three].each do |ilvl, num_id|
+        expect(ilvl).to eq('0')
+        expect(abstract_of(num_id)).to eq('91')
+      end
+      expect(start_overrides(first.last)).to eq('0' => '1')
+      expect(start_overrides(three.last)).to eq('0' => '3')
+    end
+
+    it 'keeps caracal numbering for levels the template lacks, restarting each list' do
+      expect(pkg.style_id_by_name('List Bullet 3')).to eq(style_of('deep'))
+      expect(pkg.style_id_by_name('List Number 2')).to eq(style_of('nested one'))
+      expect(num_pr('deep').first).to eq('2')
+      nested, again = num_pr('nested one'), num_pr('nested again')
+      expect(nested.first).to eq('1')
+      expect(nested.last).not_to eq(again.last)
+      expect(start_overrides(again.last)).to eq('1' => '1')
+      expect(paragraph('nested one').at_xpath('w:pPr/w:ind', NS)).not_to be_nil
+    end
+
+    it 'indents text after a nested list like its item, without a bullet' do
+      ppr = paragraph('after nested').at_xpath('w:pPr', NS)
+      expect(ppr.at_xpath('w:pStyle/@w:val', NS).value).to eq('Aufzhlungszeichen')
+      expect(ppr.at_xpath('w:numPr/w:numId/@w:val', NS).value).to eq('0')
+      expect(ppr.element_children.map(&:name).first(2)).to eq(%w[pStyle numPr])
+      expect(ppr.at_xpath('w:ind/@w:start', NS).value).to eq('284')
+    end
+
+    it 'keeps caracal numbering in quotes' do
+      expect(style_of('quoted')).to eq('Quote')
+      expect(abstract_of(num_pr('quoted').last)).not_to eq('90')
+    end
+
+    it "keeps the template's own list" do
+      expect(num_pr('template list')).to eq(%w[0 1])
+    end
+
+    it 'drops copies of caracal numbering that no item uses' do
+      used = doc.xpath('//w:numId/@w:val', NS).map(&:value)
+      expect(numbering.xpath('//w:num/@w:numId', NS).map(&:value) - used).to contain_exactly('90', '91')
+      referenced = numbering.xpath('//w:num/w:abstractNumId/@w:val', NS).map(&:value)
+      expect(numbering.xpath('//w:abstractNum/@w:abstractNumId', NS).map(&:value) - referenced).to be_empty
+    end
+
+    context 'with a style map' do
+      let(:docx) { Caracal::Md.render("1. first\n", template: template.to_s, style_map: { 'List Number' => 'List Bullet' }) }
+
+      it 'uses the mapped style and its numbering' do
+        expect(style_of('first')).to eq('Aufzhlungszeichen')
+        expect(paragraph('first').at_xpath('w:pPr/w:numPr', NS)).to be_nil
+      end
+    end
+
+    def paragraph(text)
+      doc.xpath('//w:body/w:p', NS).find { |p| p.xpath('.//w:t', NS).map(&:content).join == text }
+    end
+
+    def style_of(text)
+      paragraph(text).at_xpath('w:pPr/w:pStyle/@w:val', NS).value
+    end
+
+    def num_pr(text)
+      %w[ilvl numId].map { |name| paragraph(text).at_xpath("w:pPr/w:numPr/w:#{name}/@w:val", NS).value }
+    end
+
+    def abstract_of(num_id)
+      numbering.at_xpath("//w:num[@w:numId='#{num_id}']/w:abstractNumId/@w:val", NS).value
+    end
+
+    def start_overrides(num_id)
+      numbering.xpath("//w:num[@w:numId='#{num_id}']/w:lvlOverride", NS).to_h do |override|
+        [override['w:ilvl'], override.at_xpath('w:startOverride/@w:val', NS).value]
+      end
+    end
+  end
+
   def template_style_id(name)
     pkg.style_id_by_name(name)
   end

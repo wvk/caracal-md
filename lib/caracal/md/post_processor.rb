@@ -42,17 +42,20 @@ module Caracal
         end
       end
 
+      # Sets the start number of the numbering instance and level of the
+      # list's first item.
       def list_starts(markers)
         markers.each do |start, t|
           run       = t.parent
           paragraph = paragraph_of(run)
           run.remove
-          num_id = paragraph&.at_xpath('w:pPr/w:numPr/w:numId/@w:val', NS)&.value
+          num_pr = paragraph&.at_xpath('w:pPr/w:numPr', NS)
+          num_id = num_pr&.at_xpath('w:numId/@w:val', NS)&.value
           next unless num_id
 
           numbering = @package.related_part(@main, :numbering) or next
           num = @package.xml(numbering).at_xpath("/w:numbering/w:num[@w:numId='#{num_id}']", NS) or next
-          num.add_child %(<w:lvlOverride w:ilvl="0"><w:startOverride w:val="#{start}"/></w:lvlOverride>)
+          Numbering.start_at(num, num_pr.at_xpath('w:ilvl/@w:val', NS)&.value || '0', start)
         end
       end
 

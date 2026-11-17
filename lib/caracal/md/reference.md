@@ -36,10 +36,22 @@ def greet(name)
 end
 ```
 
-- List Paragraph
-- Another item
-  1. Nested and numbered
-  2. Second
+Lists use *List Bullet* and *List Number*, 2 to 5 for nested levels. Give
+these styles a bullet or number in Word (Modify Style, Format, Numbering) and
+lists take it over.
+
+- List Bullet
+  - List Bullet 2
+    - List Bullet 3
+      - List Bullet 4
+        - List Bullet 5
+          - List Paragraph, for deeper levels
+
+1. List Number
+   1. List Number 2
+      1. List Number 3
+         1. List Number 4
+            1. List Number 5
 
 | Markdown Table | Value |
 |:---------------|------:|

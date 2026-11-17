@@ -317,7 +317,7 @@ module Caracal
         children = li.children.reject { |child| child.type == :blank }
         first    = children.first&.type == :p ? children.shift : nil
 
-        list.li(style: ctx[:list_style] || 'ListParagraph') do |item|
+        list.li(style: ctx[:list_style] || Styles.list_style(list.list_type, list.list_level)) do |item|
           item.text marker if marker
           inlines(strip_whitespace(first.children), item, {}) if first
           children.each { |child| list_item_block(child, item, ctx) }

@@ -43,7 +43,7 @@ gem 'rouge' # optional: syntax highlighting of fenced code
 | `> quote` | *Quote* |
 | `> [!NOTE]` … `> [!CAUTION]` (GitHub alerts) | *Note*, *Tip*, *Important*, *Warning*, *Caution*, with a label |
 | fenced and indented code | *Source Code*, highlighted by Rouge when installed |
-| lists, nested lists, `3.` start numbers, `- [ ]` tasks | Word numbering (*List Paragraph*), ☐ / ☒ |
+| lists, nested lists, `3.` start numbers, `- [ ]` tasks | *List Bullet*, *List Number*, *List Bullet 2* … *5* and *List Number 2* … *5* for nested levels (*List Paragraph* below), with Word numbering; ☐ / ☒ |
 | GFM tables with alignment, `Table: caption` after the table | *Markdown Table* with a repeating header row, *Table Text* |
 | definition lists (kramdown) | *Definition Term*, *Definition* |
 | `![alt](img.png "Title")` | the image, scaled to the text width, with the title as *caption* |
@@ -90,6 +90,8 @@ caracal-md notes.md -t corporate.dotx -s "Quote=Intense Quote" -s "MarkdownTable
 ```
 
 Keys are the style ids or names in the table above; values are style names or ids in the template.
+
+**Lists.** Where the template gives *List Bullet*, *List Number* and their nested-level styles (*List Bullet 2* … *5*, *List Number 2* … *5*) a bullet or number, lists take the template's bullets, numbers and indentation, and every numbered list starts at its own first number. Levels without such a style keep caracal-md's numbering. Corporate list styles with other names work through the style map, e.g. `style_map: { 'List Bullet' => 'Aufzählung' }`. In Word, a style gets its numbering under Modify Style → Format → Numbering.
 
 **Where the content goes.** A paragraph reading `{{content}}` (configurable with `placeholder:`) receives the content, and everything else in the template body stays, e.g. a cover page and a closing page. Without that paragraph the content replaces the template's body.
 
@@ -152,7 +154,7 @@ Treat Markdown from users like any other input:
 1. `FrontMatter` splits off the YAML; kramdown parses the rest.
 2. `Converter` walks the syntax tree and issues caracal commands, referring to styles by the ids in `Styles`. What caracal has no command for (footnotes, list start numbers) it marks with private-use characters.
 3. caracal renders a complete package.
-4. With a template, `TemplateMerger` moves the body into a copy of the template: it resolves styles by name, renumbers lists, copies images and links, and fills the placeholders.
+4. With a template, `TemplateMerger` moves the body into a copy of the template: it resolves styles by name, numbers lists through the template's list styles where they have numbering (renumbering caracal's elsewhere), copies images and links, and fills the placeholders.
 5. `PostProcessor` turns the markers into footnotes and start numbers; `Language` and `CoreProperties` write `lang` and the document properties.
 
 

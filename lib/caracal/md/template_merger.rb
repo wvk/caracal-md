@@ -40,7 +40,9 @@ module Caracal
 
         make_document
         rewrite_styles merge_styles
-        rewrite_numbering merge_numbering
+        num_map = merge_numbering
+        rewrite_numbering num_map
+        number_lists num_map
         rewrite_relationships merge_relationships
         offset_ids
         insert_body
@@ -207,6 +209,143 @@ module Caracal
       def rewrite_numbering(mapping)
         @gen_body.xpath('.//w:numId', NS).each do |node|
           node['w:val'] = mapping[node['w:val']] if mapping[node['w:val']]
+        end
+      end
+
+      #========== LISTS =======================================
+
+      # Elements a paragraph's w:numPr follows in w:pPr.
+      BEFORE_NUM_PR = %w[pStyle keepNext keepLines pageBreakBefore framePr widowControl].freeze
+
+      # List items whose style carries numbering in the template (List
+      # Bullet, List Number 2, …) take the style's bullets, numbers and
+      # indentation instead of caracal's. Every numbered list gets its own
+      # numbering instance, so it starts at 1 whichever numbering it uses.
+      # Text after a nested list keeps its item's style without the number.
+      # Copies of caracal's numbering no item uses any more are removed.
+      def number_lists(num_map)
+        return if num_map.empty?
+
+        @numbering        = @out.xml(@out.related_part(@out_main, :numbering))
+        @style_numberings = {}
+        instances         = {} # caracal numId => { level => numbering instance }
+
+        @gen_body.xpath('.//w:p/w:pPr', NS).each do |ppr|
+          style  = ppr.at_xpath('w:pStyle/@w:val', NS)&.value
+          list   = style && style_numbering(style)
+          num_pr = ppr.at_xpath('w:numPr', NS)
+          if num_pr
+            number_list_item(ppr, num_pr, list, instances)
+          elsif list and (ind = ppr.at_xpath('w:ind', NS))
+            continue_list_item(ppr, ind, list)
+          end
+        end
+        prune_numbering(num_map.values)
+      end
+
+      def number_list_item(ppr, num_pr, list, instances)
+        num_id  = num_pr.at_xpath('w:numId/@w:val', NS)&.value
+        caracal = numbering_level(num_id, num_pr.at_xpath('w:ilvl/@w:val', NS)&.value || '0') or return
+        open    = instances[num_id] ||= {}
+        level   = caracal[:ilvl].to_i
+        open.reject! { |l, _| l > level }
+
+        if list
+          ppr.xpath('w:ind | w:contextualSpacing', NS).each(&:remove)
+          return num_pr.remove if list[:bullet]
+        else
+          return if caracal[:bullet]
+
+          list = caracal
+        end
+
+        num_id = open[level] ||= add_numbering_instance(list)
+        num_pr.children.remove
+        num_pr.add_child(%(<w:ilvl w:val="#{list[:ilvl]}"/><w:numId w:val="#{num_id}"/>))
+      end
+
+      # A paragraph after a nested list, indented to the item's text.
+      def continue_list_item(ppr, ind, list)
+        ppr.at_xpath('w:contextualSpacing', NS)&.remove
+        before = ppr.element_children.reverse.find { |el| BEFORE_NUM_PR.include?(el.name) }
+        num_pr = '<w:numPr><w:numId w:val="0"/></w:numPr>'
+        before ? before.add_next_sibling(num_pr) : ppr.prepend_child(num_pr)
+
+        text  = list[:lvl].at_xpath('w:pPr/w:ind', NS)
+        start = text && (text['w:start'] || text['w:left'])
+        ind['w:start'] = start if start
+      end
+
+      # The numbering a template style carries, itself or through the
+      # styles it is based on, or nil.
+      def style_numbering(id)
+        return @style_numberings[id] if @style_numberings.key?(id)
+        return unless @out_styles
+
+        num_id = ilvl = nil
+        seen   = []
+        style  = @out_styles[:ids][id]
+        while style and not seen.include?(style)
+          seen << style
+          if (num_pr = style.at_xpath('w:pPr/w:numPr', NS))
+            ilvl   ||= num_pr.at_xpath('w:ilvl/@w:val', NS)&.value
+            num_id ||= num_pr.at_xpath('w:numId/@w:val', NS)&.value
+            break if num_id
+          end
+          style = @out_styles[:ids][style.at_xpath('w:basedOn/@w:val', NS)&.value]
+        end
+        return @style_numberings[id] = nil if num_id.nil? or num_id == '0'
+
+        # A level that names the style takes precedence over the style's ilvl.
+        linked = abstract_numbering(num_id)&.at_xpath("w:lvl[w:pStyle/@w:val='#{id}']/@w:ilvl", NS)&.value
+        @style_numberings[id] = numbering_level(num_id, linked || ilvl || '0')
+      end
+
+      # { num:, ilvl:, lvl:, bullet: } for level +ilvl+ of numbering
+      # instance +num_id+, or nil when the numbering lacks it.
+      def numbering_level(num_id, ilvl)
+        num      = numbering_instance(num_id) or return
+        abstract = abstract_numbering(num_id) or return
+        lvl      = num.at_xpath("w:lvlOverride[@w:ilvl='#{ilvl}']/w:lvl", NS) ||
+                   abstract.at_xpath("w:lvl[@w:ilvl='#{ilvl}']", NS) or return
+        { num: num_id, ilvl: ilvl, lvl: lvl, bullet: %w[bullet none].include?(lvl.at_xpath('w:numFmt/@w:val', NS)&.value) }
+      end
+
+      def numbering_instance(num_id)
+        @numbering.at_xpath("/w:numbering/w:num[@w:numId='#{num_id}']", NS)
+      end
+
+      # The abstract numbering of an instance, following a numbering style
+      # link (w:numStyleLink) to the definition with the levels.
+      def abstract_numbering(num_id, depth = 0)
+        abstract_id = numbering_instance(num_id)&.at_xpath('w:abstractNumId/@w:val', NS)&.value or return
+        abstract = @numbering.at_xpath("/w:numbering/w:abstractNum[@w:abstractNumId='#{abstract_id}']", NS) or return
+        link = abstract.at_xpath('w:numStyleLink/@w:val', NS)&.value
+        return abstract unless link and depth < 2
+
+        linked = @out_styles && @out_styles[:ids][link]&.at_xpath('w:pPr/w:numPr/w:numId/@w:val', NS)&.value
+        linked ? abstract_numbering(linked, depth + 1) : abstract
+      end
+
+      # A copy of the list's numbering instance that starts the list's
+      # level at 1; returns its numId.
+      def add_numbering_instance(list)
+        copy = numbering_instance(list[:num]).dup
+        copy['w:numId'] = (@numbering.xpath('/w:numbering/w:num/@w:numId', NS).map { |a| a.value.to_i }.max.to_i + 1).to_s
+        Numbering.start_at(copy, list[:ilvl], 1)
+        @numbering.xpath('/w:numbering/w:num', NS).last.add_next_sibling(copy)
+        copy['w:numId']
+      end
+
+      def prune_numbering(num_ids)
+        used = @gen_body.xpath('.//w:numId/@w:val', NS).map(&:value)
+        (num_ids - used).each do |num_id|
+          num = numbering_instance(num_id) or next
+          abstract_id = num.at_xpath('w:abstractNumId/@w:val', NS)&.value
+          num.remove
+          next if @numbering.at_xpath("/w:numbering/w:num[w:abstractNumId/@w:val='#{abstract_id}']", NS)
+
+          @numbering.at_xpath("/w:numbering/w:abstractNum[@w:abstractNumId='#{abstract_id}']", NS)&.remove
         end
       end
 
