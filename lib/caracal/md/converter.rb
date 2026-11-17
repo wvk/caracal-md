@@ -75,6 +75,7 @@ module Caracal
         highlight:         true,
         highlight_theme:   Highlighter::THEME,
         allow_raw_openxml: false,
+        link:              nil,             # call(href) => the href to use, or nil for the link's text alone
         figure_captions:   :title,          # :title, :alt or :none
         image_loader:      nil,
         base_dir:          nil,
@@ -883,17 +884,34 @@ module Caracal
           return reference(p, href[1..], fmt, source: href)
         end
 
-        content = href if content.empty?
-        fmt     = fmt.merge(link_format(el)).merge(style: 'Hyperlink')
+        target = link_target(href)
+        return link_text(el, p, fmt, href) unless target
 
-        if href.start_with?('#') and href.length > 1
-          p.link content, bookmark_name(href[1..]), fmt.merge(internal: true)
-        elsif safe_link?(href)
-          p.link content, href, fmt
+        content = target if content.empty?
+        options = fmt.merge(link_format(el)).merge(style: 'Hyperlink')
+
+        if target.start_with?('#') and target.length > 1
+          p.link content, bookmark_name(target[1..]), options.merge(internal: true)
+        elsif safe_link?(target)
+          p.link content, target, options
         else
-          warn "link to #{href.inspect} is rendered as text"
-          text(p, content, fmt.except(:style))
+          warn "link to #{target.inspect} is rendered as text"
+          link_text(el, p, fmt, target)
         end
+      end
+
+      # The target the link option gives +href+, or nil for the link's text
+      # alone; +href+ itself without the option.
+      def link_target(href)
+        return href unless @options[:link]
+
+        target = @options[:link].call(href.dup.freeze)
+        (target.to_s.strip if target)
+      end
+
+      # A link's content without the hyperlink, or +href+ when it has none.
+      def link_text(el, p, fmt, href)
+        plain_text(el).empty? ? text(p, href, fmt) : inlines(el.children, p, fmt)
       end
 
       # Formatting a link's content applies to all of it.

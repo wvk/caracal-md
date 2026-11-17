@@ -30,6 +30,9 @@ options   = { variables: {}, style_map: {}, code_handlers: {} }
 output    = nil
 reference = nil
 
+# Keeps links with a scheme (https:, mailto:, …) and in-document anchors.
+local_links_as_text = ->(href) { href.match?(/\A([a-z][a-z0-9+.-]*:|#)/i) ? href : nil }
+
 parser = OptionParser.new do |o|
   o.banner = 'Usage: caracal-md [options] INPUT.md   (INPUT "-" reads stdin)'
   o.separator ''
@@ -73,6 +76,9 @@ parser = OptionParser.new do |o|
   o.on('--base-dir DIR', 'directory images are read from (default: the input file\'s)') { |v| options[:base_dir] = v }
   o.on('--allow-remote-images', 'fetch http(s) images') { options[:allow_remote_images] = true }
   o.on('--allow-raw-openxml', 'pass ```{=openxml} blocks through unchanged') { options[:allow_raw_openxml] = true }
+  o.on('--local-links MODE', %w[link text], 'links to local files, without scheme or #anchor: link (default), or text to keep only the link text') do |v|
+    options[:link] = (local_links_as_text if v == 'text')
+  end
   o.on('--print-reference-doc FILE', 'write a document showing every default style and exit') { |v| reference = v }
   o.on('-v', '--version') { puts Caracal::Md::VERSION; exit }
   o.on('-h', '--help') { puts o; exit }
