@@ -22,10 +22,10 @@ caracal-md --print-reference-doc reference.docx
 
 ## Installation
 
-caracal 2 is installed from GitHub, so add both to your Gemfile:
+caracal-md needs Ruby 3.3 or later. caracal 2 is installed from GitHub, so add both to your Gemfile:
 
 ```ruby
-gem 'caracal', github: 'wvk/caracal', branch: 'master'
+gem 'caracal', github: 'wvk/caracal', tag: 'v2.0.0'
 gem 'caracal-md', github: 'wvk/caracal-md'
 gem 'rouge' # optional: syntax highlighting of fenced code
 ```
