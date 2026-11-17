@@ -69,6 +69,7 @@ module Caracal
         toc:               false,
         toc_title:         nil,
         toc_depth:         3,
+        heading_offset:    0,               # levels added to every heading's, or :auto: the highest level in use becomes 1
         title_block:       true,
         quotes:            :en,
         highlight:         true,
@@ -131,6 +132,7 @@ module Caracal
       # the title block.
       def convert(markdown, target, meta: {})
         root = parse(markdown)
+        @heading_offset = heading_offset(root)
         lof = (@options[:lof] and not contains_directive?(root, :lof))
         lot = (@options[:lot] and not contains_directive?(root, :lot))
         # a list of figures or tables lists numbered captions, so it numbers all
@@ -305,7 +307,7 @@ module Caracal
       end
 
       def heading(el, target, ctx)
-        level = el.options[:level].to_i.clamp(1, 6)
+        level = (el.options[:level].to_i + @heading_offset).clamp(1, 6)
         style = paragraph_style(el, "Heading#{level}")
         id    = el.attr['id'].to_s
 
@@ -320,6 +322,25 @@ module Caracal
             p.bookmark_end id: name
           end
         end
+      end
+
+      # The levels the heading_offset option adds to every heading's: an
+      # integer as it is, or for :auto those that make the highest level in
+      # +root+ level 1.
+      def heading_offset(root)
+        offset = @options[:heading_offset]
+        return 0 if offset.nil?
+        return 1 - (heading_levels(root).min || 1) if offset.to_s == 'auto'
+
+        Integer(offset)
+      rescue ArgumentError, TypeError
+        warn "heading offset #{offset.inspect} is ignored; it takes an integer or auto"
+        0
+      end
+
+      def heading_levels(el)
+        own = (el.type == :header ? [el.options[:level].to_i] : [])
+        own + el.children.flat_map { |child| heading_levels(child) }
       end
 
       # A quote, or a GitHub alert (> [!NOTE]) with a label paragraph.

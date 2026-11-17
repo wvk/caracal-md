@@ -54,6 +54,9 @@ parser = OptionParser.new do |o|
   end
   o.on('--[no-]toc', 'add a table of contents (default: front matter "toc")') { |v| options[:toc] = v }
   o.on('--toc-depth N', Integer, 'heading levels in the table of contents (default 3)') { |v| options[:toc_depth] = v }
+  o.on('--heading-offset N', /\A(?:auto|[+-]?\d+)\z/, 'add N to every heading level (-1: ## becomes Heading 1), or auto: the highest level in use becomes Heading 1 (default: front matter "heading-offset")') do |v|
+    options[:heading_offset] = (v == 'auto' ? :auto : v.to_i)
+  end
   o.on('--toc-title TEXT', 'table of contents heading') { |v| options[:toc_title] = v }
   o.on('--[no-]number-captions', 'number every figure and table caption (default: front matter "number-captions")') { |v| options[:number_captions] = v }
   o.on('--chapter-numbers', 'number captions per level-1 heading: Figure 2.1') { options[:number_captions] = :chapter }
