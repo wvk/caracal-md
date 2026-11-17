@@ -13,3 +13,7 @@ Gemfile.lock
 
 # LibreOffice lock files
 .~lock.*#
+
+# Agent notes
+/CLAUDE.md
+/.claude/
