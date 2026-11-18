@@ -76,6 +76,7 @@ lang: de          # German quotes, spelling language de-DE, "Inhalt" as TOC titl
 toc: true
 toc-depth: 2
 toc-title: Inhalt
+heading-offset: auto    # the highest heading level in use becomes Heading 1, e.g. ## when # is the title
 number-captions: true   # every caption numbered; "chapter" numbers per level-1 heading
 lof: true               # list of figures after the table of contents
 ---
@@ -211,6 +212,7 @@ Keys are the style ids or names in the table above; values are style names or id
 | `allow_remote_images:` | `false` | fetch http(s) images |
 | `allow_raw_openxml:` | `false` | pass ```` ```{=openxml} ```` blocks through |
 | `toc:`, `toc_title:`, `toc_depth:` | front matter, else off, *Contents*, 3 | table of contents |
+| `heading_offset:` | front matter, else `0` | levels added to every heading's, within 1–6: `-1` turns `##` into Heading 1, `:auto` makes the highest level in use Heading 1; `toc_depth` and chapter numbers count the shifted levels |
 | `title_block:` | `:auto` | title, subtitle, authors, date and abstract from front matter; `:auto` skips it when the template shows `{{title}}` |
 | `quotes:` | from `lang`, else `:en` | `:en`, `:de`, `:fr` or four kramdown entity names |
 | `highlight:` | `true` | syntax highlighting, when Rouge is installed |

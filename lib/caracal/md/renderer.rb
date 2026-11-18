@@ -20,6 +20,7 @@ module Caracal
         toc:                 nil,       # nil: front matter decides
         toc_title:           nil,
         toc_depth:           nil,
+        heading_offset:      nil,       # nil: front matter decides; levels added to every heading's, or :auto (highest level in use becomes Heading 1)
         title_block:         :auto,     # :auto renders it unless the template has {{title}}
         quotes:              nil,       # :en, :de, :fr or four kramdown entity names; nil: from lang
         highlight:           true,
@@ -103,6 +104,7 @@ module Caracal
           toc:                 option_or_meta(:toc, meta['toc'], false),
           toc_title:           option_or_meta(:toc_title, meta['toc-title'], nil),
           toc_depth:           option_or_meta(:toc_depth, meta['toc-depth'], 3),
+          heading_offset:      option_or_meta(:heading_offset, meta['heading-offset'], 0),
           title_block:         title_block?(meta, template),
           quotes:              @options[:quotes] || (lang.start_with?('de') ? :de : lang.start_with?('fr') ? :fr : :en),
           highlight:           @options[:highlight],

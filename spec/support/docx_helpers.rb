@@ -1,7 +1,23 @@
+require 'open3'
+require 'rbconfig'
 require 'zlib'
 
 module DocxHelpers
   NS = Caracal::Md::Package::NS
+
+  CLI = File.expand_path('../../bin/caracal-md', __dir__)
+
+  # Runs bin/caracal-md on +markdown+ with +args+; returns the DOCX it writes.
+  def cli(markdown, *args)
+    Dir.mktmpdir do |dir|
+      input = File.join(dir, 'input.md')
+      File.write(input, markdown)
+      _, error, status = Open3.capture3(RbConfig.ruby, CLI, *args, input)
+      raise "caracal-md failed: #{error}" unless status.success?
+
+      File.binread(File.join(dir, 'input.docx'))
+    end
+  end
 
   def package(bytes)
     Caracal::Md::Package.read(bytes)
