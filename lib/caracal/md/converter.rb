@@ -170,10 +170,11 @@ module Caracal
       #========== PARSING =====================================
 
       def parse(markdown)
-        doc = Kramdown::Document.new(markdown.to_s, kramdown_options)
-        @smart_quotes = doc.options[:smart_quotes]
-        @warnings.concat(doc.warnings.reject { |message| crossref_link_warning?(message) })
-        doc.root
+        options = Kramdown::Options.merge(kramdown_options)
+        root, warnings = Parser.parse(markdown.to_s, options)
+        @smart_quotes = options[:smart_quotes]
+        @warnings.concat(warnings.reject { |message| crossref_link_warning?(message) })
+        root
       end
 
       # kramdown reads [@fig:id] as a reference link without definition.
@@ -186,7 +187,6 @@ module Caracal
         quotes = @options[:quotes]
         quotes = QUOTES.fetch(quotes.to_sym) { QUOTES[:en] } unless quotes.is_a?(Array)
         {
-          input:        'GFM',
           hard_wrap:    false,
           auto_ids:     true,
           smart_quotes: quotes,
