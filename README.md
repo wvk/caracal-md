@@ -40,7 +40,7 @@ SVG images need caracal's `master` (`branch: 'master'` in place of the tag) unti
 | `# Heading` … `######` | Heading 1–6, with a bookmark so `[link](#heading)` jumps there |
 | paragraphs, `**strong**`, `*em*`, `~~strike~~`, `==highlight==`, `` `code` `` | Normal, bold, italic, strikethrough, highlight, *Verbatim Char* |
 | `<sup>`, `<sub>`, `<u>`, `<mark>`, `<kbd>` | superscript, subscript, underline, highlight, *Verbatim Char* |
-| links, autolinks | hyperlinks (*Hyperlink*); `javascript:` and other unknown schemes stay text |
+| links, autolinks | hyperlinks (*Hyperlink*); `javascript:` and other unknown schemes stay text; see [Links](#links) |
 | `"quotes"`, `--`, `...` | typographic quotes (English, German or French), dashes, ellipsis |
 | `> quote` | *Quote* |
 | `> [!NOTE]` … `> [!CAUTION]` (GitHub alerts) | *Note*, *Tip*, *Important*, *Warning*, *Caution*, with a label |
@@ -105,6 +105,25 @@ The paragraph reads "See Figure 1 and Table 1." Both kramdown and pandoc-crossre
 * A link without text, `[](#id)`, shows the label and number, or a heading's text. `@fig:id`, `[@fig:id]` and `[@fig:a; @tbl:b]` do the same; `[-@fig:id]` shows the number alone. A link with text, `[the diagram](#fig-arch)`, stays a link.
 * References are `REF` fields with their text filled in; Word updates them with the other fields.
 * `<!-- list-of-figures -->` or `lof: true` (placed after the table of contents) adds Word's table of figures, `<!-- list-of-tables -->` or `lot: true` the list of tables. Either numbers every caption, and Word fills in the page numbers on open.
+
+
+## Links
+
+Links to local files, such as `[the tiers](tiers.md)` in notes from a wiki or an Obsidian vault, become hyperlinks with relative targets, which lead nowhere once the document travels. `link:` receives each link's target and returns the target to use, or `nil` to keep only the link's text:
+
+```ruby
+# links with a scheme (https:, mailto:, …) and in-document anchors stay, local files become text
+Caracal::Md.render(markdown, link: ->(href) { href.match?(/\A([a-z][a-z0-9+.-]*:|#)/i) ? href : nil })
+
+# notes point to the wiki
+Caracal::Md.render(markdown, link: ->(href) { href.end_with?('.md') ? "https://wiki.example.com/#{href.delete_suffix('.md')}" : href })
+```
+
+```sh
+caracal-md notes.md --local-links text      # the first of the two
+```
+
+The targets it returns pass the same checks as the document's own: `javascript:` and other unknown schemes stay text. Cross-references (`[](#id)`, `@fig:id`) stay cross-references.
 
 
 ## Diagrams
@@ -211,6 +230,7 @@ Keys are the style ids or names in the table above; values are style names or id
 | `image_loader:` | built in | `->(src) { bytes or nil }`, e.g. for ActiveStorage |
 | `allow_remote_images:` | `false` | fetch http(s) images |
 | `allow_raw_openxml:` | `false` | pass ```` ```{=openxml} ```` blocks through |
+| `link:` | none | `->(href) { href to use, or nil }`: rewrites link targets, or keeps a link's text alone, see [Links](#links) |
 | `toc:`, `toc_title:`, `toc_depth:` | front matter, else off, *Contents*, 3 | table of contents |
 | `heading_offset:` | front matter, else `0` | levels added to every heading's, within 1–6: `-1` turns `##` into Heading 1, `:auto` makes the highest level in use Heading 1; `toc_depth` and chapter numbers count the shifted levels |
 | `title_block:` | `:auto` | title, subtitle, authors, date and abstract from front matter; `:auto` skips it when the template shows `{{title}}` |

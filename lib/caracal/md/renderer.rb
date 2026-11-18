@@ -17,6 +17,7 @@ module Caracal
         image_loader:        nil,       # callable(src) => bytes or nil, replaces the default loader
         allow_remote_images: false,
         allow_raw_openxml:   false,
+        link:                nil,       # callable(href) => the href to use, or nil to keep the link's text alone
         toc:                 nil,       # nil: front matter decides
         toc_title:           nil,
         toc_depth:           nil,
@@ -109,6 +110,7 @@ module Caracal
           quotes:              @options[:quotes] || (lang.start_with?('de') ? :de : lang.start_with?('fr') ? :fr : :en),
           highlight:           @options[:highlight],
           allow_raw_openxml:   @options[:allow_raw_openxml],
+          link:                @options[:link],
           figure_captions:     @options[:figure_captions],
           image_loader:        @options[:image_loader],
           base_dir:            @options[:base_dir],

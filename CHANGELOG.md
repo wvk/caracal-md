@@ -6,6 +6,7 @@ First release.
 
 * Markdown (GFM and kramdown) to DOCX through caracal 2: headings with bookmarks, inline formatting (`==highlight==` included), typographic quotes per language, lists with start numbers and task boxes, tables with alignment and captions, definition lists, images scaled to the page, highlighted code, GitHub alerts, page breaks, table of contents.
 * Word footnotes.
+* `link:` rewrites link targets or keeps a link's text alone; `--local-links text` does so for links to local files.
 * Numbered captions for figures and tables (opt-in, per chapter on request), cross-references in kramdown (`[](#id)`) and pandoc-crossref (`@fig:id`) syntax, lists of figures and tables.
 * Code handlers: fenced blocks (Graphviz, PlantUML, Mermaid, `$$` math, …) rendered to images by any callable, with `CommandHandler` for external programs and `--code-handler` on the command line; handler output is checked like an untrusted image.
 * SVG images and SVG from code handlers, cleaned (allowlist, no external references, no DTD) and embedded as SVG with a PNG fallback from a pluggable `svg_rasterizer` (`--svg-rasterizer`), blank without one; `data:image/svg+xml` URIs. With caracal 2.0.0, the rasterizer's PNG alone.
