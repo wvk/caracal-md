@@ -36,6 +36,7 @@ module Caracal
         lot_title:           nil,
         code_handlers:       {},        # { language => handler } or CodeHandlers: fenced blocks as images
         svg_rasterizer:      nil,       # call(CodeBlock with cleaned SVG) => PNG fallback; without it the fallback is blank
+        code_cache:          nil,       # Rails.cache, a FileCache or anything with fetch(key) { value }: handler output across renders
         page_size:           :a4,       # without template
         margins:             1440,      # twips, without template
         styles:              nil,       # callable(docx): adjust the default styles
@@ -130,6 +131,7 @@ module Caracal
           lang:                lang,
           code_handlers:       @options[:code_handlers],
           svg_rasterizer:      @options[:svg_rasterizer],
+          code_cache:          @options[:code_cache],
           lof:                 option_or_meta(:lof, meta['lof'], false),
           lot:                 option_or_meta(:lot, meta['lot'], false),
         }

@@ -9,6 +9,7 @@ First release.
 * `link:` rewrites link targets or keeps a link's text alone; `--local-links text` does so for links to local files.
 * Numbered captions for figures and tables (opt-in, per chapter on request), cross-references in kramdown (`[](#id)`) and pandoc-crossref (`@fig:id`) syntax, lists of figures and tables.
 * Code handlers: fenced blocks (Graphviz, PlantUML, Mermaid, `$$` math, …) rendered to images by any callable, with `CommandHandler` for external programs and `--code-handler` on the command line; handler output is checked like an untrusted image.
+* `code_cache:` (`--code-cache DIR`) keeps code handler and rasterizer output across renders, keyed by block and handler (`CommandHandler` with `version:`), with cached bytes checked like fresh ones.
 * SVG images and SVG from code handlers, cleaned (allowlist, no external references, no DTD) and embedded as SVG with a PNG fallback from a pluggable `svg_rasterizer` (`--svg-rasterizer`), blank without one; `data:image/svg+xml` URIs. With caracal 2.0.0, the rasterizer's PNG alone.
 * Default style set named after Word's built-in styles, and `--print-reference-doc` to restyle it in Word.
 * Word templates (.docx, .dotx, .docm, .dotm): styles matched by name, `style_map`, content at `{{content}}`, `{{placeholders}}` from front matter.

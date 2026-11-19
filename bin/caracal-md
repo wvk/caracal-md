@@ -52,6 +52,7 @@ parser = OptionParser.new do |o|
     abort "caracal-md: --code-handler needs LANG=COMMAND, got #{v.inspect}" if language.to_s.empty? or command.to_s.strip.empty?
     options[:code_handlers][language] = Caracal::Md::CommandHandler.new(command)
   end
+  o.on('--code-cache DIR', 'keep code handler and rasterizer output in DIR across runs; changed blocks render again') { |v| options[:code_cache] = Caracal::Md::FileCache.new(v) }
   o.on('--svg-rasterizer COMMAND', 'make the PNG fallback of SVG images from the cleaned SVG (stdin, PNG on stdout), e.g. "inkscape --pipe --export-type=png --export-filename=-"; without it the fallback is blank') do |v|
     options[:svg_rasterizer] = Caracal::Md::CommandHandler.new(v)
   end
