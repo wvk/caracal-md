@@ -126,6 +126,30 @@ caracal-md notes.md --local-links text      # the first of the two
 The targets it returns pass the same checks as the document's own: `javascript:` and other unknown schemes stay text. Cross-references (`[](#id)`, `@fig:id`) stay cross-references.
 
 
+## Values in Markdown
+
+Markdown built from data, in ERB views or string templates, interpolates values such as names and comments, and Markdown syntax inside them takes effect: emphasis, links, images read from `base_dir`, footnotes, HTML, the template's `{{placeholders}}`. `Caracal::Md.escape` returns Markdown that renders as the value itself:
+
+```ruby
+markdown = <<~MD
+  # Offer for #{Caracal::Md.escape(customer.name)}
+
+  | Item | Note |
+  |------|------|
+  #{items.map { |item| "| #{Caracal::Md.escape(item.name)} | #{Caracal::Md.escape(item.note)} |" }.join("\n")}
+MD
+Caracal::Md.render(markdown, template: 'offer.dotx')
+```
+
+Line breaks in the value become line breaks in the document (`<br>`), so the escaped value is one line of Markdown and fits paragraphs, list items, table cells and headings alike. Inside code spans, fenced code, image titles and alt texts it shows its escapes. It writes braces as `&#123;`, which stay braces through the template merge; `{{key}}` written in the Markdown itself is filled as before. U+E000 and U+E001, two private-use characters that caracal-md keeps for its own markers, come out as U+FFFD.
+
+Front matter is YAML, where `:`, `#`, `[`, `{`, `@` and words such as `yes` have a meaning of their own. Write an escaped value there as a JSON string (`to_json`, from Ruby's `json`), which YAML reads as a quoted scalar:
+
+```ruby
+front_matter = "---\ntitle: #{Caracal::Md.escape(report.title).to_json}\n---\n"
+```
+
+
 ## Diagrams
 
 A code handler turns a fenced block into an image: a Graphviz, PlantUML or Mermaid diagram, a formula, anything a program or a service can render. Handlers are keyed by the fence's language; `math` also receives `$$` blocks.
@@ -213,7 +237,7 @@ Keys are the style ids or names in the table above; values are style names or id
 
 **Where the content goes.** A paragraph reading `{{content}}` (configurable with `placeholder:`) receives the content, and everything else in the template body stays, e.g. a cover page and a closing page. Without that paragraph the content replaces the template's body.
 
-**Placeholders.** `{{title}}`, `{{author}}`, `{{date}}` and any other front matter key are replaced in the template body, headers and footers, also where Word has split the text across several runs. `variables: { 'client' => 'ACME' }` (or `--var client=ACME`) adds more. When the template shows `{{title}}`, caracal-md leaves out its own title block.
+**Placeholders.** `{{title}}`, `{{author}}`, `{{date}}` and any other front matter key are replaced in the template body, headers and footers, also where Word has split the text across several runs, and in the Markdown content; values escaped with `Caracal::Md.escape` keep their braces. `variables: { 'client' => 'ACME' }` (or `--var client=ACME`) adds more. When the template shows `{{title}}`, caracal-md leaves out its own title block.
 
 **Making a template.** `caracal-md --print-reference-doc reference.docx` writes a document using every style of the default set. Change the styles (and page setup, headers, footers) in Word, save it as a template and pass it back.
 
@@ -272,6 +296,7 @@ Treat Markdown from users like any other input:
 * Local images are read only inside `base_dir`, symlinks resolved; paths outside it fall back to their alt text.
 * Remote images are off unless `allow_remote_images: true`. Turning them on lets the document's author make your server fetch URLs, internal ones included; consider an `image_loader` with an allowlist instead.
 * Raw OOXML is off unless `allow_raw_openxml: true`.
+* Values interpolated into Markdown go through `Caracal::Md.escape`, see [Values in Markdown](#values-in-markdown).
 * Code handlers get the block's source from the document and run what you configure; their output is checked like an image. See [Diagrams](#diagrams) for the limits and for sandboxing diagram tools.
 * SVG is cleaned before the rasterizer sees it, see [SVG](#svg).
 * Templates are read with a size limit per entry (`Caracal::Md::Package.max_entry_size`, 50 MB).
