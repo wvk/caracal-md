@@ -904,7 +904,7 @@ module Caracal
       end
 
       def link(el, p, fmt)
-        href    = el.attr['href'].to_s.strip
+        href    = clean_href(el.attr['href'])
         content = plain_text(el)
         # [](#id) shows the target's label and number, or its heading text
         if @captions and content.empty? and href.start_with?('#') and href.length > 1
@@ -933,7 +933,15 @@ module Caracal
         return href unless @options[:link]
 
         target = @options[:link].call(href.dup.freeze)
-        (target.to_s.strip if target)
+        (clean_href(target) if target)
+      end
+
+      # A link target as a URL parser reads it: without tabs and line breaks,
+      # and without control characters and spaces at its ends. A browser
+      # takes "java\tscript:" for "javascript:", so the scheme is checked on
+      # this form, and this form goes into the document.
+      def clean_href(href)
+        href.to_s.delete("\t\n\r").gsub(/\A[\u0000-\u0020]+|[\u0000-\u0020]+\z/, '')
       end
 
       # A link's content without the hyperlink, or +href+ when it has none.

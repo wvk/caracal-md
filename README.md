@@ -170,7 +170,7 @@ caracal-md --input html - < post.html
 * `img` goes through the image loader with the rules of Markdown images; Action Text's image URLs need an `image_loader` that reads them from Active Storage. A `figure` holding one image, or one table, and a `figcaption` becomes the image or table with that caption.
 * Trix writes paragraphs as `div` with two `<br>` between them, Tiptap as `p`, and list items as `li` with `p`: both read as paragraphs.
 * Other elements keep their text. The contents of `script`, `style`, `template` and the document's `head` are dropped.
-* The text stays text: `*`, `#`, `==` and other Markdown signs show as they are. Paragraphs reading `[TOC]` or `\newpage` and comments such as `<!-- pagebreak -->` work as in Markdown, and so do `{{key}}` placeholders, which the template merge fills, whether the braces are written as `{` or `&#123;`.
+* The text stays text: `*`, `#`, `==` and other Markdown signs show as they are. Paragraphs reading `[TOC]` or `\newpage`, cross-references such as `@fig:id` and comments such as `<!-- pagebreak -->` work as in Markdown, and so do `{{key}}` placeholders, which the template merge fills, whether the braces are written as `{` or `&#123;`.
 
 
 ## Diagrams
@@ -315,7 +315,7 @@ Here footnotes become a numbered list after the content, captions stay unnumbere
 
 ## Security
 
-Treat Markdown from users like any other input:
+Treat Markdown and HTML from users like any other input:
 
 * Local images are read only inside `base_dir`, symlinks resolved; paths outside it fall back to their alt text.
 * Remote images are off unless `allow_remote_images: true`. Turning them on lets the document's author make your server fetch URLs, internal ones included; consider an `image_loader` with an allowlist instead.

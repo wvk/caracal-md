@@ -214,6 +214,32 @@ RSpec.describe 'HTML input' do
     expect(doc.to_xml).not_to include(open, close)
   end
 
+  # caracal raises for a list without items, and a table needs a cell in
+  # every row it gets.
+  it 'leaves out lists without items and table rows without cells' do
+    html = "<ul></ul><ol>\n</ol><ul><li>a<ul></ul></li></ul><blockquote><ul></ul><p>b</p></blockquote>" \
+           '<table><tr></tr></table><table><tr></tr><tr><td>c</td></tr></table><p>after</p>'
+    doc = render(html, input: :html)
+    expect(texts(doc)).to eq(%w[a b after])
+    expect(doc.xpath('//w:tbl//w:tr', NS).map { |tr| tr.xpath('.//w:t', NS).map(&:content).join }).to eq(['c'])
+    expect(@renderer.warnings).to be_empty
+  end
+
+  # A browser drops tabs and line breaks from a URL, and control characters
+  # and spaces from its ends, before it reads the scheme.
+  it 'reads link targets as a URL parser does' do
+    ["java\tscript:alert(1)", 'java&#10;script:alert(1)', 'java&#13;script:alert(1)', "javascript\t:alert(1)",
+     '&#1;javascript:alert(1)', " \tjavascript:alert(1)", "fi\tle:///etc/passwd", "da\tta:text/html,x"].each do |href|
+      doc = render(%(<p><a href="#{href}">text</a></p>), input: :html)
+      expect(doc.at_xpath('//w:hyperlink', NS)).to be_nil, href.inspect
+      expect(texts(doc)).to eq(['text'])
+      expect(@renderer.warnings.size).to eq(1), href.inspect
+    end
+
+    render(%(<p><a href=" ht\ttps://example.com/a\nb ">text</a></p>), input: :html)
+    expect(structure(@docx).last).to eq(['https://example.com/ab'])
+  end
+
   it 'refuses HTML nested deeper than 256 levels' do
     expect { render(('<div>' * 300) + 'x', input: :html) }.to raise_error(Caracal::Md::Error, /depth/)
   end

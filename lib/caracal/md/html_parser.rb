@@ -79,7 +79,7 @@ module Caracal
         when 'p'                 then paragraph(node)
         when /\Ah[1-6]\z/        then [with(E.new(:header, nil, attrs(node, 'id'), level: name[1].to_i), trim(items(node)))]
         when 'blockquote'        then [with(E.new(:blockquote), blocks(items(node)))]
-        when 'ul', 'ol'          then [list(node)]
+        when 'ul', 'ol'          then [list(node)].compact
         when 'dl'                then [definition_list(node)]
         when 'pre'               then [code_block(node)]
         when 'table'             then [table(node)]
@@ -192,7 +192,8 @@ module Caracal
       #========== LISTS =======================================
 
       # A list of li elements. Other content, such as a list nested without
-      # its li, joins the item before it.
+      # its li, joins the item before it. A list without items is no list:
+      # caracal refuses one.
       def list(node)
         list = E.new(node.name.downcase.to_sym)
         list.attr['start'] = node['start'] if list.type == :ol and node['start']
@@ -207,7 +208,7 @@ module Caracal
             list.children.last.children.concat(content)
           end
         end
-        list
+        list unless list.children.empty?
       end
 
       # An item's blocks; a task's checkbox, in a paragraph of its own as
@@ -250,9 +251,11 @@ module Caracal
       #========== TABLES ======================================
 
       # A table with a header row from thead, else from leading rows of th
-      # cells. Cells hold their blocks as lines; colspan adds empty cells.
+      # cells. Cells hold their blocks as lines; colspan adds empty cells;
+      # rows without cells are left out.
       def table(node)
         rows  = node.xpath('./*[local-name()="thead" or local-name()="tbody" or local-name()="tfoot"]/*[local-name()="tr"] | ./*[local-name()="tr"]')
+        rows  = rows.select { |tr| cells(tr).any? }
         heads = rows.take_while { |tr| tr.parent.name.casecmp?('thead') }
         heads = rows.take_while { |tr| cells(tr).any? and cells(tr).all? { |cell| cell.name.casecmp?('th') } } if heads.empty?
 

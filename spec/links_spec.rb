@@ -57,6 +57,15 @@ RSpec.describe 'Links' do
       expect(renderer.warnings).to eq(['link to "javascript:alert(1)" is rendered as text'])
     end
 
+    it 'checks it without tabs, line breaks and control characters at its ends, as a URL parser reads it' do
+      ["java\tscript:alert(1)", "\u0001javascript:alert(1)\n"].each do |target|
+        renderer = Caracal::Md::Renderer.new(link: ->(_) { target })
+        doc = document_xml(renderer.render("[click](https://example.com/)\n"))
+        expect(doc.at_xpath('//w:hyperlink', NS)).to be_nil, target.inspect
+        expect(renderer.warnings).to eq(['link to "javascript:alert(1)" is rendered as text'])
+      end
+    end
+
     it 'leaves cross-references alone' do
       seen = []
       md = "| a |\n|---|\n| 1 |\n\nTable: Numbers {#tbl:n}\n\nSee [](#tbl:n) and @tbl:n.\n"
