@@ -14,6 +14,17 @@ module Caracal
   module Md
     class Error < StandardError; end
 
+    # Markdown that renders as +text+, for values interpolated into Markdown:
+    #
+    #   Caracal::Md.render("Customer: #{Caracal::Md.escape(customer.name)}")
+    #
+    # Each line is escaped as the start of a block and line breaks become
+    # <br>, so the result fits paragraphs, list items, table cells and
+    # headings alike; inside code spans it shows its escapes.
+    def self.escape(text)
+      Escape.markdown(text)
+    end
+
     def self.render(markdown, **options)
       Renderer.new(**options).render(markdown)
     end
@@ -52,6 +63,7 @@ require_relative 'md/placeholders'
 require_relative 'md/parser'
 require_relative 'md/captions'
 require_relative 'md/converter'
+require_relative 'md/escape'
 require_relative 'md/template'
 require_relative 'md/template_merger'
 require_relative 'md/caption_fields'

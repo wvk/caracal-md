@@ -5,10 +5,13 @@ module Caracal
     # * fn:N runs become footnote references, and the paragraphs between
     #   fn-start:N and fn-end:N move into word/footnotes.xml;
     # * an ol-start:N run sets the start number of its list;
-    # * caption, ref and list markers become fields (see CaptionFields).
+    # * caption, ref and list markers become fields (see CaptionFields);
+    # * char:N, also inside other text, becomes the character N.
     class PostProcessor
       NS = Package::NS
       W  = NS['w']
+
+      CHAR = /#{Converter::MARKER_OPEN}char:(\d+)#{Converter::MARKER_CLOSE}/o
 
       FOOTNOTES_XML = <<~XML.freeze
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -26,6 +29,7 @@ module Caracal
       end
 
       def apply
+        literal_chars
         markers = collect_markers
         CaptionFields.new(@package, @captions).apply(markers) if @captions
         list_starts(markers['ol-start'] || [])
@@ -34,6 +38,17 @@ module Caracal
       end
 
       private
+
+      # Characters the converter kept from forming {{placeholders}} until the
+      # template merge was done. They may sit inside longer text, e.g. in
+      # caracal's table of contents.
+      def literal_chars
+        @doc.xpath('//w:t', NS).each do |t|
+          next unless t.content.include?(Converter::MARKER_OPEN)
+
+          t.content = t.content.gsub(CHAR) { Regexp.last_match(1).to_i.chr(Encoding::UTF_8) }
+        end
+      end
 
       # { kind => [[number, w:t node]] } for every text node that is a marker.
       def collect_markers

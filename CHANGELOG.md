@@ -16,5 +16,6 @@ First release.
 * Front matter for the title block, document properties, language and table of contents.
 * `heading_offset:` (front matter `heading-offset`, `--heading-offset`) shifts heading levels; `auto` makes the highest level in use Heading 1.
 * `custom-style` attributes for paragraphs, spans and tables.
+* `Caracal::Md.escape` for values interpolated into Markdown.
 * `#markdown` on caracal documents, headers, footers and table cells.
 * `caracal-md` command line tool.
