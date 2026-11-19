@@ -9,6 +9,7 @@ Caracal::Md.convert_file 'notes.md'                                  # => notes.
 Caracal::Md.convert_file 'notes.md', 'notes.docx', template: 'corporate.dotx'
 
 docx = Caracal::Md.render(markdown, template: 'corporate.dotx')       # => DOCX bytes
+docx = Caracal::Md.render(post.body.to_s, input: :html)              # rich text from web editors
 ```
 
 ```sh
@@ -149,6 +150,28 @@ Front matter is YAML, where `:`, `#`, `[`, `{`, `@` and words such as `yes` have
 front_matter = "---\ntitle: #{Caracal::Md.escape(report.title).to_json}\n---\n"
 ```
 
+## HTML input
+
+Rich text from web editors (Action Text with Trix or Tiptap), CMS fields and HTML mails arrive as HTML. `input: :html` reads it, and everything else works as for Markdown: templates, styles, numbered captions, code handlers.
+
+```ruby
+Caracal::Md.render(post.body.to_s, input: :html, template: 'corporate.dotx')
+Caracal::Md.convert_file 'mail.html'              # .html and .htm files are HTML
+docx.markdown post.body.to_s, input: :html          # inside caracal
+```
+
+```sh
+caracal-md mail.html
+caracal-md --input html - < post.html
+```
+
+* Headings, paragraphs, `strong`/`b`, `em`/`i`, `u`, `s`/`del`, `code`, `mark`, `sub`, `sup`, links, nested lists with `start`, tables, `blockquote`, `hr`, `br`, definition lists and task checkboxes convert like their Markdown counterparts. A table takes its header rows from `thead`, else from its leading rows of `th`, and its caption from `caption`.
+* `pre` with `code class="language-x"` is highlighted and goes to code handlers like a fenced block; the `pre`'s other attributes (`id`, `title`, …) are the block's.
+* `img` goes through the image loader with the rules of Markdown images; Action Text's image URLs need an `image_loader` that reads them from Active Storage. A `figure` holding one image, or one table, and a `figcaption` becomes the image or table with that caption.
+* Trix writes paragraphs as `div` with two `<br>` between them, Tiptap as `p`, and list items as `li` with `p`: both read as paragraphs.
+* Other elements keep their text. The contents of `script`, `style`, `template` and the document's `head` are dropped.
+* The text stays text: `*`, `#`, `==` and other Markdown signs show as they are. Paragraphs reading `[TOC]` or `\newpage`, cross-references such as `@fig:id` and comments such as `<!-- pagebreak -->` work as in Markdown, and so do `{{key}}` placeholders, which the template merge fills, whether the braces are written as `{` or `&#123;`.
+
 
 ## Diagrams
 
@@ -176,6 +199,20 @@ digraph { Markdown -> caracal -> Word }
 ````
 
 A handler is anything that responds to `call(block)` and returns PNG, JPEG, GIF or SVG bytes (SVG goes through the [SVG](#svg) path). `block` is a `Caracal::Md::CodeBlock` with `language`, `source` and `attributes` (every attribute of the block as a String, so a handler can read its own, e.g. `theme="dark"`). `CommandHandler` is one such handler: it runs a program with the source on stdin and reads the image from stdout. Handlers for rendering services or other tools can come from any gem.
+
+**Caching.** Every render runs every handler, so a server re-rendering documents, or the CLI after a small edit, renders unchanged diagrams again. `code_cache:` keeps successful output across renders: `Rails.cache` or any other `ActiveSupport::Cache::Store`, anything with `fetch(key) { value }`, or `Caracal::Md::FileCache.new(dir)`, which `--code-cache DIR` uses.
+
+```ruby
+Caracal::Md.render(markdown, code_cache: Rails.cache, code_handlers: {
+  'dot' => Caracal::Md::CommandHandler.new(%w[dot -Tpng], version: '14.0'),
+})
+```
+
+```sh
+caracal-md notes.md --code-handler 'dot=dot -Tpng' --code-cache ~/.cache/caracal-md
+```
+
+The key is a digest of the block's language, source and attributes and of the handler's `cache_key`: a `CommandHandler` names its command and its `version:`, so a new version renders again; a handler without `cache_key` is cached under its language. Failures and warnings are kept out of the cache, so they run again next time. What comes out of the cache passes the same checks as fresh output, since a shared cache is untrusted storage, and an entry that fails them runs the handler. Cached blocks count as identical blocks, not towards the 50 runs per document. SVG rasterizer output is cached the same way.
 
 **Untrusted documents.** Source and attributes come from whoever wrote the Markdown, and what a handler returns counts as untrusted, like an image from the web:
 
@@ -262,6 +299,7 @@ Caracal::Md.render(markdown, template: CORPORATE)   # in any request or job
 | `placeholder:` | `'{{content}}'` | template paragraph that receives the content |
 | `variables:` | `{}` | extra placeholder values |
 | `lang:` | none | language of documents whose front matter names none (`'de'`, `'de-CH'`, `I18n.locale`): quotes, caption labels, list and TOC titles, spelling language; front matter `lang` wins |
+| `input:` | `:markdown` | `:html` reads HTML, see [HTML input](#html-input); `convert_file` and the CLI take `.html` and `.htm` files as HTML |
 | `base_dir:` | `Dir.pwd` | relative image paths resolve here (`convert_file`: the file's directory) |
 | `image_loader:` | built in | `->(src) { bytes or nil }`, e.g. for ActiveStorage |
 | `allow_remote_images:` | `false` | fetch http(s) images |
@@ -274,6 +312,7 @@ Caracal::Md.render(markdown, template: CORPORATE)   # in any request or job
 | `highlight:` | `true` | syntax highlighting, when Rouge is installed |
 | `figure_captions:` | `:title` | caption from the image title, `:alt` or `:none` |
 | `code_handlers:` | `{}` | language ⇒ handler, or a `CodeHandlers` with limits: fenced blocks as images, see [Diagrams](#diagrams) |
+| `code_cache:` | none | `Rails.cache`, a `Caracal::Md::FileCache` or anything with `fetch(key) { value }`: code handler and rasterizer output across renders, see [Diagrams](#diagrams) |
 | `svg_rasterizer:` | none | handler turning cleaned SVG into the PNG fallback, see [SVG](#svg); without it the fallback is blank |
 | `number_captions:` | front matter, else `false` | `true` numbers every caption, `:chapter` per level-1 heading; figures and tables with an id are numbered either way |
 | `figure_label:`, `table_label:` | from the language | caption labels |
@@ -302,7 +341,7 @@ Here footnotes become a numbered list after the content, captions stay unnumbere
 
 ## Security
 
-Treat Markdown from users like any other input:
+Treat Markdown and HTML from users like any other input:
 
 * Local images are read only inside `base_dir`, symlinks resolved; paths outside it fall back to their alt text.
 * Remote images are off unless `allow_remote_images: true`. Turning them on lets the document's author make your server fetch URLs, internal ones included; consider an `image_loader` with an allowlist instead.
@@ -315,7 +354,7 @@ Treat Markdown from users like any other input:
 
 ## How it works
 
-1. `FrontMatter` splits off the YAML; kramdown parses the rest.
+1. `FrontMatter` splits off the YAML; kramdown parses the rest. HTML goes through `HtmlParser` (Nokogiri's HTML5 parser) into the same element tree.
 2. `Converter` walks the syntax tree and issues caracal commands, referring to styles by the ids in `Styles`; `CodeHandlers` turn fenced blocks into checked image bytes, `Svg` cleans SVG for the rasterizer. What caracal has no command for (footnotes, list start numbers, caption numbers, cross-references, lists of figures) it marks with private-use characters.
 3. caracal renders a complete package.
 4. With a template, `TemplateMerger` moves the body into a copy of the template: it resolves styles by name, numbers lists through the template's list styles where they have numbering (renumbering caracal's elsewhere), copies images and links, and fills the placeholders.

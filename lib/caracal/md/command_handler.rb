@@ -8,7 +8,7 @@ module Caracal
     # stdin, the image comes from its stdout.
     #
     #   Caracal::Md::CommandHandler.new(%w[dot -Tpng])
-    #   Caracal::Md::CommandHandler.new('plantuml -tpng -pipe', timeout: 60)
+    #   Caracal::Md::CommandHandler.new('plantuml -tpng -pipe', timeout: 60, version: '1.2025')
     #
     # The command is an argument list (a String is split like a shell would,
     # without running one), so nothing from the document reaches a command
@@ -23,15 +23,24 @@ module Caracal
       CHUNK      = 64 * 1024
       STDERR_MAX = 4 * 1024
 
-      attr_reader :command
+      attr_reader :command, :version
 
-      def initialize(command, timeout: 30, max_bytes: CodeHandlers::DEFAULT_MAX_BYTES, env: {})
+      # +version+ names the program's version for the cache key: a new one
+      # renders again what a code cache holds from the old.
+      def initialize(command, timeout: 30, max_bytes: CodeHandlers::DEFAULT_MAX_BYTES, env: {}, version: nil)
         @command   = command.is_a?(String) ? Shellwords.split(command) : Array(command).map(&:to_s)
         raise ArgumentError, 'empty command' if @command.empty?
 
         @timeout   = timeout
         @max_bytes = max_bytes
         @env       = env.to_h.transform_keys(&:to_s)
+        @version   = version&.to_s
+      end
+
+      # What a code cache tells this handler's output by: the command and
+      # the version.
+      def cache_key
+        [@command, @version].compact
       end
 
       def call(block)

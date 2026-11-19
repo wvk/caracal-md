@@ -14,6 +14,7 @@ module Caracal
         placeholder:         '{{content}}',
         variables:           {},        # extra {{key}} values for the template
         lang:                nil,       # language of documents whose front matter names none ('de', 'de-CH', :en, …)
+        input:               :markdown, # or :html: rich text from web editors, without front matter
         base_dir:            nil,       # where relative image paths resolve; defaults to Dir.pwd
         image_loader:        nil,       # callable(src) => bytes or nil, replaces the default loader
         allow_remote_images: false,
@@ -36,6 +37,7 @@ module Caracal
         lot_title:           nil,
         code_handlers:       {},        # { language => handler } or CodeHandlers: fenced blocks as images
         svg_rasterizer:      nil,       # call(CodeBlock with cleaned SVG) => PNG fallback; without it the fallback is blank
+        code_cache:          nil,       # Rails.cache, a FileCache or anything with fetch(key) { value }: handler output across renders
         page_size:           :a4,       # without template
         margins:             1440,      # twips, without template
         styles:              nil,       # callable(docx): adjust the default styles
@@ -49,11 +51,13 @@ module Caracal
         raise ArgumentError, "unknown option(s): #{unknown.join(', ')}" if unknown.any?
 
         @options  = DEFAULTS.merge(options)
+        @input    = Converter.input(@options[:input])
         @warnings = []
       end
 
+      # DOCX bytes for +markdown+, or for HTML with input: :html.
       def render(markdown)
-        meta, body = FrontMatter.split(markdown.to_s)
+        meta, body = (@input == :html ? [{}, markdown.to_s] : FrontMatter.split(markdown.to_s))
         meta       = with_lang(meta)
         template   = @options[:template] && Template.load(@options[:template])
         variables  = FrontMatter.to_variables(meta).merge(@options[:variables].transform_keys(&:to_s))
@@ -128,8 +132,10 @@ module Caracal
           base_dir:            @options[:base_dir],
           allow_remote_images: @options[:allow_remote_images],
           lang:                lang,
+          input:               @input,
           code_handlers:       @options[:code_handlers],
           svg_rasterizer:      @options[:svg_rasterizer],
+          code_cache:          @options[:code_cache],
           literal_braces:      true,
           lof:                 option_or_meta(:lof, meta['lof'], false),
           lot:                 option_or_meta(:lot, meta['lot'], false),
