@@ -132,6 +132,7 @@ module Caracal
           code_handlers:       @options[:code_handlers],
           svg_rasterizer:      @options[:svg_rasterizer],
           code_cache:          @options[:code_cache],
+          literal_braces:      true,
           lof:                 option_or_meta(:lof, meta['lof'], false),
           lot:                 option_or_meta(:lot, meta['lot'], false),
         }
