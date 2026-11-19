@@ -19,4 +19,5 @@ First release.
 * `custom-style` attributes for paragraphs, spans and tables.
 * `Caracal::Md.escape` for values interpolated into Markdown.
 * `#markdown` on caracal documents, headers, footers and table cells.
+* `Caracal::Md.document` for documents that mix caracal commands with Markdown: Word footnotes, caption numbers and cross-references across the `markdown` calls, template merge, language and document properties.
 * `caracal-md` command line tool.

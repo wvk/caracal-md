@@ -6,8 +6,18 @@ module Caracal
     #
     # Content goes in as it is converted; footnotes become a numbered list
     # after it, since Word footnotes need the whole package (see Renderer).
+    # In the block of Caracal::Md.document, the document's #markdown
+    # converts with that render's state instead (see Renderer#document).
     module DocumentExtension
+      # Set by Renderer#document for the time of its block.
+      attr_accessor :markdown_session
+
       def markdown(text, **options)
+        if markdown_session
+          @markdown_warnings = markdown_session.markdown(self, text, **options)
+          return self
+        end
+
         if is_a?(Caracal::Document)
           Styles.install(self, only_missing: true)
           options = { text_width: page_width - page_margin_left - page_margin_right,

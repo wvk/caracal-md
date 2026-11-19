@@ -44,6 +44,39 @@ module Caracal
 
       attr_reader :warnings
 
+      # The Markdown calls of one #document: each converts with the
+      # document's converter, so footnotes and captions run on.
+      class Session
+        # Front matter keys that set up the whole document.
+        DOCUMENT_KEYS = %w[lang toc toc-depth toc-title lof lot lof-title lot-title number-captions figure-label table-label].freeze
+        CALL_OPTIONS  = %i[heading_offset].freeze
+
+        # Front matter of the calls so far, for placeholders and properties.
+        attr_reader :meta
+
+        def initialize(converter, meta)
+          @converter = converter
+          @meta      = meta.dup
+        end
+
+        # Converts +text+ onto +target+; returns the warnings it adds.
+        def markdown(target, text, **options)
+          unknown = options.keys - CALL_OPTIONS
+          if unknown.any?
+            raise ArgumentError, "inside Caracal::Md.document, #markdown takes heading_offset: alone; pass #{unknown.join(', ')} to Caracal::Md.document"
+          end
+
+          front, body = FrontMatter.split(text.to_s)
+          before = @converter.warnings.size
+          (front.keys & DOCUMENT_KEYS).each do |key|
+            @converter.warnings << "front matter #{key} in #markdown is ignored; Caracal::Md.document takes it as an option"
+          end
+          @meta.merge!(front.except(*DOCUMENT_KEYS, 'heading-offset'))
+          @converter.convert_part(body, target, heading_offset: options.fetch(:heading_offset) { front['heading-offset'] })
+          @converter.warnings.drop(before)
+        end
+      end
+
       def initialize(**options)
         unknown = options.keys - DEFAULTS.keys
         raise ArgumentError, "unknown option(s): #{unknown.join(', ')}" if unknown.any?
@@ -55,21 +88,62 @@ module Caracal
       def render(markdown)
         meta, body = FrontMatter.split(markdown.to_s)
         meta       = with_lang(meta)
-        template   = @options[:template] && Template.load(@options[:template])
-        variables  = FrontMatter.to_variables(meta).merge(@options[:variables].transform_keys(&:to_s))
+        build(meta) do |docx, converter|
+          converter.convert(body, docx, meta: meta)
+          meta
+        end
+      end
 
+      # DOCX bytes for a document built with caracal commands in the block,
+      # with Markdown where it calls docx.markdown: footnotes, caption
+      # numbers and cross-references run across those calls, and the
+      # template merge, language and document properties apply as in
+      # #render. The document starts with the table of contents and lists
+      # of figures the options ask for; it has no title block.
+      #
+      # Inside the block, #markdown takes heading_offset: alone, the other
+      # options go here. Front matter in its text adds to the template's
+      # placeholders and the document properties, a later call's keys
+      # winning, and gives that call its heading-offset; the settings of the
+      # whole document (lang, toc, lof, number-captions, …) come from the
+      # options, so front matter naming them adds a warning.
+      def document
+        raise ArgumentError, 'Caracal::Md.document needs a block' unless block_given?
+        raise ArgumentError, 'Caracal::Md.document has no front matter for a title block' if @options[:title_block] == true
+
+        build(with_lang({}), title_block: false) do |docx, converter|
+          session = Session.new(converter, with_lang({}))
+          converter.start(docx)
+          docx.markdown_session = session
+          begin
+            yield docx
+          ensure
+            docx.markdown_session = nil
+          end
+          converter.check_references
+          session.meta
+        end
+      end
+
+      private
+
+      # The document around what the block converts with the converter; the
+      # block returns the front matter for placeholders and properties.
+      def build(meta, **overrides)
+        template = @options[:template] && Template.load(@options[:template])
         docx = Caracal::Document.new
         setup_page(docx, template)
         Styles.install(docx)
         @options[:styles]&.call(docx)
 
         captions  = captions(meta)
-        converter = Converter.new(converter_options(meta, template, docx).merge(captions: captions))
-        converter.convert(body, docx, meta: meta)
+        converter = Converter.new(converter_options(meta, template, docx).merge(captions: captions, **overrides))
+        meta      = yield(docx, converter)
         converter.define_custom_styles(docx)
         @options[:document]&.call(docx)
 
-        package = Package.read(docx.render.string)
+        variables = FrontMatter.to_variables(meta).merge(@options[:variables].transform_keys(&:to_s))
+        package   = Package.read(docx.render.string)
         @warnings = converter.warnings.dup
         if template
           merger  = TemplateMerger.new(template, package, style_map: @options[:style_map],
@@ -82,8 +156,6 @@ module Caracal
         CoreProperties.apply(package, meta)
         package.to_s
       end
-
-      private
 
       # Front matter with the lang option as its "lang" when it names none:
       # the language decides quotes, caption labels, list titles, the
