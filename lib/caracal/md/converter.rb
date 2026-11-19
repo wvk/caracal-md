@@ -85,6 +85,7 @@ module Caracal
         lof:               false,           # list of figures after the table of contents
         lot:               false,           # list of tables after the table of contents
         code_handlers:     nil,             # { language => handler } or CodeHandlers: fenced blocks as images
+        code_cache:        nil,             # fetch(key) { bytes }: handler and rasterizer output across renders
         svg_rasterizer:    nil,             # call(CodeBlock with the cleaned SVG) => PNG/JPEG/GIF fallback
         literal_braces:    false,           # { and } written as entities become markers (need PostProcessor), see #entity_char
         input:             :markdown,       # :markdown or :html (see HtmlParser)
@@ -142,7 +143,7 @@ module Caracal
         @referenced    = []  # ids cross-references point to
         @caption_count = 0
         @code_handlers = code_handlers(@options[:code_handlers])
-        @svg_rasterizer = (CodeHandlers.new({ 'svg' => @options[:svg_rasterizer] }, raster_only: true) if @options[:svg_rasterizer])
+        @svg_rasterizer = (CodeHandlers.new({ 'svg' => @options[:svg_rasterizer] }, raster_only: true, cache: @options[:code_cache]) if @options[:svg_rasterizer])
         @image_loader  = @options[:image_loader] ||
           ImageLoader.new(base_dir: @options[:base_dir] || Dir.pwd, allow_remote: @options[:allow_remote_images])
         @highlighter   = Highlighter.new(theme: @options[:highlight_theme]) if @options[:highlight] and Highlighter.available?
@@ -408,7 +409,7 @@ module Caracal
         return if handlers.nil? or handlers.empty?
 
         handlers = CodeHandlers.new(handlers) unless handlers.is_a?(CodeHandlers)
-        handlers.for_render
+        handlers.for_render(cache: @options[:code_cache] || handlers.cache)
       end
 
       # Hands the block to the code handler for +language+ and shows the image

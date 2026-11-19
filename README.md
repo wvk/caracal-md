@@ -200,6 +200,20 @@ digraph { Markdown -> caracal -> Word }
 
 A handler is anything that responds to `call(block)` and returns PNG, JPEG, GIF or SVG bytes (SVG goes through the [SVG](#svg) path). `block` is a `Caracal::Md::CodeBlock` with `language`, `source` and `attributes` (every attribute of the block as a String, so a handler can read its own, e.g. `theme="dark"`). `CommandHandler` is one such handler: it runs a program with the source on stdin and reads the image from stdout. Handlers for rendering services or other tools can come from any gem.
 
+**Caching.** Every render runs every handler, so a server re-rendering documents, or the CLI after a small edit, renders unchanged diagrams again. `code_cache:` keeps successful output across renders: `Rails.cache` or any other `ActiveSupport::Cache::Store`, anything with `fetch(key) { value }`, or `Caracal::Md::FileCache.new(dir)`, which `--code-cache DIR` uses.
+
+```ruby
+Caracal::Md.render(markdown, code_cache: Rails.cache, code_handlers: {
+  'dot' => Caracal::Md::CommandHandler.new(%w[dot -Tpng], version: '14.0'),
+})
+```
+
+```sh
+caracal-md notes.md --code-handler 'dot=dot -Tpng' --code-cache ~/.cache/caracal-md
+```
+
+The key is a digest of the block's language, source and attributes and of the handler's `cache_key`: a `CommandHandler` names its command and its `version:`, so a new version renders again; a handler without `cache_key` is cached under its language. Failures and warnings are kept out of the cache, so they run again next time. What comes out of the cache passes the same checks as fresh output, since a shared cache is untrusted storage, and an entry that fails them runs the handler. Cached blocks count as identical blocks, not towards the 50 runs per document. SVG rasterizer output is cached the same way.
+
 **Untrusted documents.** Source and attributes come from whoever wrote the Markdown, and what a handler returns counts as untrusted, like an image from the web:
 
 * Only a non-empty String of at most 20 MB holding a PNG, JPEG or GIF with readable dimensions, or an SVG, gets any further; SVG is then cleaned (see [SVG](#svg)). Anything else, an exception included, leaves the block as code and adds a warning.
@@ -287,6 +301,7 @@ Keys are the style ids or names in the table above; values are style names or id
 | `highlight:` | `true` | syntax highlighting, when Rouge is installed |
 | `figure_captions:` | `:title` | caption from the image title, `:alt` or `:none` |
 | `code_handlers:` | `{}` | language ⇒ handler, or a `CodeHandlers` with limits: fenced blocks as images, see [Diagrams](#diagrams) |
+| `code_cache:` | none | `Rails.cache`, a `Caracal::Md::FileCache` or anything with `fetch(key) { value }`: code handler and rasterizer output across renders, see [Diagrams](#diagrams) |
 | `svg_rasterizer:` | none | handler turning cleaned SVG into the PNG fallback, see [SVG](#svg); without it the fallback is blank |
 | `number_captions:` | front matter, else `false` | `true` numbers every caption, `:chapter` per level-1 heading; figures and tables with an id are numbered either way |
 | `figure_label:`, `table_label:` | from the language | caption labels |
