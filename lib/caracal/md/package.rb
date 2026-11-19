@@ -6,6 +6,9 @@ module Caracal
   module Md
     # An OPC package (.docx, .dotx) held in memory: its raw entries plus the
     # XML parts parsed so far. Parsed parts are written back on #to_s.
+    #
+    # A frozen package (see Template) keeps its entries as they are: it
+    # writes, copies (#dup) and serializes them, and parses no parts.
     class Package
       NS = {
         'w'       => 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
@@ -50,9 +53,12 @@ module Caracal
       end
       self.max_entry_size = 50 * 1024 * 1024
 
-      # Reads a package from a path, an IO or a String of bytes.
+      # Reads a package from a path (String or Pathname), an IO or a String
+      # of bytes.
       def self.read(source)
-        bytes = if source.respond_to?(:read)
+        bytes = if defined?(Pathname) and source.is_a?(Pathname)
+          File.binread(source)
+        elsif source.respond_to?(:read)
           source.read
         elsif source.is_a?(String) and source.b.start_with?("PK\x03\x04".b)
           source
@@ -106,16 +112,37 @@ module Caracal
 
       # The parsed XML of a part; changes to it are kept.
       def xml(name)
-        @xml[name] ||= begin
+        @xml.fetch(name) do
+          raise FrozenError.new("#{name}: a frozen package parses no parts; parse them in a #dup", receiver: self) if frozen?
+
           content = @entries.fetch(name) { raise Error, "package has no part #{name}" }
-          Nokogiri::XML(content) { |config| config.strict.nonet }
+          @xml[name] = Nokogiri::XML(content) { |config| config.strict.nonet }
         end
       end
 
-      # A copy whose parts can change independently of this package.
+      # A copy whose parts can change independently of this package. It
+      # reads this package only, and shares the entries frozen ones.
       def dup
+        entries = @entries.transform_values { |content| content.frozen? ? content : content.dup }
+        @xml.each { |name, doc| entries[name] = serialize(doc) }
+        Package.new entries
+      end
+
+      # Writes parsed parts back and freezes the entries; #xml raises
+      # FrozenError from then on.
+      def freeze
+        return self if frozen?
+
+        begin
+          main_part
+        rescue Error
+          nil
+        end
         flush
-        Package.new @entries.transform_values(&:dup)
+        @xml = {}.freeze
+        @entries.each_value(&:freeze)
+        @entries.freeze
+        super
       end
 
       # The package as zip bytes.
@@ -275,8 +302,12 @@ module Caracal
         names = name ? [name] : @xml.keys
         names.each do |n|
           doc = @xml[n] or next
-          @entries[n] = doc.to_xml(save_with: Nokogiri::XML::Node::SaveOptions::AS_XML)
+          @entries[n] = serialize(doc)
         end
+      end
+
+      def serialize(doc)
+        doc.to_xml(save_with: Nokogiri::XML::Node::SaveOptions::AS_XML)
       end
     end
   end

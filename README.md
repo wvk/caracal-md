@@ -276,6 +276,17 @@ Keys are the style ids or names in the table above; values are style names or id
 
 **Placeholders.** `{{title}}`, `{{author}}`, `{{date}}` and any other front matter key are replaced in the template body, headers and footers, also where Word has split the text across several runs, and in the Markdown content; values escaped with `Caracal::Md.escape` keep their braces. `variables: { 'client' => 'ACME' }` (or `--var client=ACME`) adds more. When the template shows `{{title}}`, caracal-md leaves out its own title block.
 
+**One template, many renders.** A path or bytes as `template:` are read again for every render. A loaded `Caracal::Md::Template` is read once, then frozen: renders copy it and never change it, so web apps and batch jobs share one instance across renders and threads (Puma, Sidekiq).
+
+```ruby
+# config/initializers/caracal_md.rb
+CORPORATE = Caracal::Md::Template.load(Rails.root.join('app/templates/corporate.dotx'))
+
+Caracal::Md.render(markdown, template: CORPORATE)   # in any request or job
+```
+
+`Template.load` takes a path, an IO, the bytes or a `Caracal::Md::Package`, of which it keeps a copy. Its package raises `FrozenError` on changes; `template.package.dup` gives a copy to change.
+
 **Making a template.** `caracal-md --print-reference-doc reference.docx` writes a document using every style of the default set. Change the styles (and page setup, headers, footers) in Word, save it as a template and pass it back.
 
 
@@ -283,7 +294,7 @@ Keys are the style ids or names in the table above; values are style names or id
 
 | Option | Default | |
 |---|---|---|
-| `template:` | none | Word template, see above |
+| `template:` | none | Word template: a path, an IO, the bytes, or a `Caracal::Md::Template` loaded once for many renders, see [Templates](#templates) |
 | `style_map:` | `{}` | style id or name ⇒ template style name or id |
 | `placeholder:` | `'{{content}}'` | template paragraph that receives the content |
 | `variables:` | `{}` | extra placeholder values |
@@ -310,7 +321,7 @@ Keys are the style ids or names in the table above; values are style names or id
 | `styles:` | none | `->(docx) { docx.style id: 'Normal', font: 'Georgia' }` to adjust the default styles |
 | `document:` | none | `->(docx) { docx.footer { p 'Draft' } }` to add caracal content before rendering |
 
-`Caracal::Md::Renderer.new(**options)` renders several documents with the same options; its `warnings` list what it couldn't convert (unloadable images, raw HTML, …).
+`Caracal::Md::Renderer.new(**options)` renders several documents with the same options, one after another; its `warnings` list what it couldn't convert (unloadable images, raw HTML, …). Threads each take a Renderer of their own (or `Caracal::Md.render`) and can share a loaded template.
 
 
 ## Inside caracal
