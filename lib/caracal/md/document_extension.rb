@@ -3,6 +3,7 @@ module Caracal
     # Adds #markdown to caracal documents, headers, footers and table cells:
     #
     #   docx.markdown "Some **bold** text", base_dir: 'docs'
+    #   docx.markdown post.body_html, input: :html
     #
     # Content goes in as it is converted; footnotes become a numbered list
     # after it, since Word footnotes need the whole package (see Renderer).
@@ -13,7 +14,8 @@ module Caracal
           options = { text_width: page_width - page_margin_left - page_margin_right,
                       text_height: page_height - page_margin_top - page_margin_bottom }.merge(options)
         end
-        meta, body = FrontMatter.split(text.to_s)
+        html = (Converter.input(options.fetch(:input, :markdown)) == :html)
+        meta, body = (html ? [{}, text.to_s] : FrontMatter.split(text.to_s))
         converter = Converter.new({ footnotes: :list, title_block: false }.merge(options))
         converter.convert(body, self, meta: meta)
         owner = is_a?(Caracal::Document) ? self : (document if respond_to?(:document))

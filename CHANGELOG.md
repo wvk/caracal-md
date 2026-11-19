@@ -18,5 +18,6 @@ First release.
 * `heading_offset:` (front matter `heading-offset`, `--heading-offset`) shifts heading levels; `auto` makes the highest level in use Heading 1.
 * `custom-style` attributes for paragraphs, spans and tables.
 * `Caracal::Md.escape` for values interpolated into Markdown.
+* HTML input (`input: :html`, `--input html`, `.html` files): rich text from web editors such as Trix and Tiptap, figures with captions.
 * `#markdown` on caracal documents, headers, footers and table cells.
 * `caracal-md` command line tool.

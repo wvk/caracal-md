@@ -126,6 +126,10 @@ RSpec.describe Caracal::Md::Renderer do
     doc = document_xml(Caracal::Md.render('[click](javascript:alert(1))'))
     expect(doc.at_xpath('//w:hyperlink', NS)).to be_nil
     expect(body_text(doc)).to eq('click')
+
+    doc = document_xml(Caracal::Md.render("[click](<java\tscript:alert(1)>)"))
+    expect(doc.at_xpath('//w:hyperlink', NS)).to be_nil
+    expect(body_text(doc)).to eq('click')
   end
 
   it 'rejects unknown options' do
