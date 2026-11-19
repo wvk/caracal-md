@@ -226,6 +226,7 @@ Keys are the style ids or names in the table above; values are style names or id
 | `style_map:` | `{}` | style id or name ⇒ template style name or id |
 | `placeholder:` | `'{{content}}'` | template paragraph that receives the content |
 | `variables:` | `{}` | extra placeholder values |
+| `lang:` | none | language of documents whose front matter names none (`'de'`, `'de-CH'`, `I18n.locale`): quotes, caption labels, list and TOC titles, spelling language; front matter `lang` wins |
 | `base_dir:` | `Dir.pwd` | relative image paths resolve here (`convert_file`: the file's directory) |
 | `image_loader:` | built in | `->(src) { bytes or nil }`, e.g. for ActiveStorage |
 | `allow_remote_images:` | `false` | fetch http(s) images |
@@ -234,13 +235,13 @@ Keys are the style ids or names in the table above; values are style names or id
 | `toc:`, `toc_title:`, `toc_depth:` | front matter, else off, *Contents*, 3 | table of contents |
 | `heading_offset:` | front matter, else `0` | levels added to every heading's, within 1–6: `-1` turns `##` into Heading 1, `:auto` makes the highest level in use Heading 1; `toc_depth` and chapter numbers count the shifted levels |
 | `title_block:` | `:auto` | title, subtitle, authors, date and abstract from front matter; `:auto` skips it when the template shows `{{title}}` |
-| `quotes:` | from `lang`, else `:en` | `:en`, `:de`, `:fr` or four kramdown entity names |
+| `quotes:` | from the language, else `:en` | `:en`, `:de`, `:fr` or four kramdown entity names |
 | `highlight:` | `true` | syntax highlighting, when Rouge is installed |
 | `figure_captions:` | `:title` | caption from the image title, `:alt` or `:none` |
 | `code_handlers:` | `{}` | language ⇒ handler, or a `CodeHandlers` with limits: fenced blocks as images, see [Diagrams](#diagrams) |
 | `svg_rasterizer:` | none | handler turning cleaned SVG into the PNG fallback, see [SVG](#svg); without it the fallback is blank |
 | `number_captions:` | front matter, else `false` | `true` numbers every caption, `:chapter` per level-1 heading; figures and tables with an id are numbered either way |
-| `figure_label:`, `table_label:` | from `lang` | caption labels |
+| `figure_label:`, `table_label:` | from the language | caption labels |
 | `lof:`, `lot:`, `lof_title:`, `lot_title:` | front matter, else off, *List of Figures*, *List of Tables* | lists of figures and tables |
 | `page_size:`, `margins:` | `:a4`, `1440` | without a template; margins in twips |
 | `styles:` | none | `->(docx) { docx.style id: 'Normal', font: 'Georgia' }` to adjust the default styles |

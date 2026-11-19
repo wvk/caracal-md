@@ -55,6 +55,7 @@ parser = OptionParser.new do |o|
   o.on('--svg-rasterizer COMMAND', 'make the PNG fallback of SVG images from the cleaned SVG (stdin, PNG on stdout), e.g. "inkscape --pipe --export-type=png --export-filename=-"; without it the fallback is blank') do |v|
     options[:svg_rasterizer] = Caracal::Md::CommandHandler.new(v)
   end
+  o.on('--lang LANG', 'language of a document whose front matter names none, e.g. de or de-CH: quotes, caption labels, spelling') { |v| options[:lang] = v }
   o.on('--[no-]toc', 'add a table of contents (default: front matter "toc")') { |v| options[:toc] = v }
   o.on('--toc-depth N', Integer, 'heading levels in the table of contents (default 3)') { |v| options[:toc_depth] = v }
   o.on('--heading-offset N', /\A(?:auto|[+-]?\d+)\z/, 'add N to every heading level (-1: ## becomes Heading 1), or auto: the highest level in use becomes Heading 1 (default: front matter "heading-offset")') do |v|
@@ -63,14 +64,14 @@ parser = OptionParser.new do |o|
   o.on('--toc-title TEXT', 'table of contents heading') { |v| options[:toc_title] = v }
   o.on('--[no-]number-captions', 'number every figure and table caption (default: front matter "number-captions")') { |v| options[:number_captions] = v }
   o.on('--chapter-numbers', 'number captions per level-1 heading: Figure 2.1') { options[:number_captions] = :chapter }
-  o.on('--figure-label TEXT', 'caption label for figures (default: from "lang", e.g. Figure)') { |v| options[:figure_label] = v }
-  o.on('--table-label TEXT', 'caption label for tables (default: from "lang", e.g. Table)') { |v| options[:table_label] = v }
+  o.on('--figure-label TEXT', 'caption label for figures (default: from the language, e.g. Figure)') { |v| options[:figure_label] = v }
+  o.on('--table-label TEXT', 'caption label for tables (default: from the language, e.g. Table)') { |v| options[:table_label] = v }
   o.on('--[no-]lof', 'add a list of figures after the table of contents (default: front matter "lof")') { |v| options[:lof] = v }
   o.on('--[no-]lot', 'add a list of tables after the table of contents (default: front matter "lot")') { |v| options[:lot] = v }
   o.on('--lof-title TEXT', 'list of figures heading') { |v| options[:lof_title] = v }
   o.on('--lot-title TEXT', 'list of tables heading') { |v| options[:lot_title] = v }
   o.on('--[no-]title-block', 'render title, author and date from front matter') { |v| options[:title_block] = v }
-  o.on('--quotes STYLE', %i[en de fr], 'typographic quotes: en, de or fr (default: from front matter "lang")') { |v| options[:quotes] = v }
+  o.on('--quotes STYLE', %i[en de fr], 'typographic quotes: en, de or fr (default: from the language)') { |v| options[:quotes] = v }
   o.on('--page-size SIZE', %i[a4 letter], 'page size without template: a4 (default) or letter') { |v| options[:page_size] = v }
   o.on('--[no-]highlight', 'syntax highlighting with Rouge, when installed (default on)') { |v| options[:highlight] = v }
   o.on('--base-dir DIR', 'directory images are read from (default: the input file\'s)') { |v| options[:base_dir] = v }
