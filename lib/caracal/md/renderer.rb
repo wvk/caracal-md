@@ -49,12 +49,14 @@ module Caracal
         raise ArgumentError, "unknown option(s): #{unknown.join(', ')}" if unknown.any?
 
         @options  = DEFAULTS.merge(options)
+        @lang     = Language.normalize(@options[:lang], option: true)
         @warnings = []
       end
 
       def render(markdown)
         meta, body = FrontMatter.split(markdown.to_s)
-        meta       = with_lang(meta)
+        lang_warnings = []
+        meta       = with_lang(meta) { |message| lang_warnings << message }
         template   = @options[:template] && Template.load(@options[:template])
         variables  = FrontMatter.to_variables(meta).merge(@options[:variables].transform_keys(&:to_s))
 
@@ -70,7 +72,7 @@ module Caracal
         @options[:document]&.call(docx)
 
         package = Package.read(docx.render.string)
-        @warnings = converter.warnings.dup
+        @warnings = lang_warnings + converter.warnings
         if template
           merger  = TemplateMerger.new(template, package, style_map: @options[:style_map],
                                        placeholder: @options[:placeholder], variables: variables)
@@ -85,14 +87,13 @@ module Caracal
 
       private
 
-      # Front matter with the lang option as its "lang" when it names none:
-      # the language decides quotes, caption labels, list titles, the
-      # spelling language and the document property.
-      def with_lang(meta)
-        lang = @options[:lang].to_s.strip
-        return meta if lang.empty? or not meta['lang'].to_s.strip.empty?
-
-        meta.merge('lang' => lang)
+      # Front matter with "lang" as one tag (see Language.normalize): its own,
+      # else the lang option's, else none. Everything that reads the
+      # language reads that tag: quotes, caption labels, list titles, the
+      # spelling language, the document property and {{lang}}.
+      def with_lang(meta, &warn)
+        lang = Language.normalize(meta['lang'], &warn) || @lang
+        lang ? meta.merge('lang' => lang) : meta.except('lang')
       end
 
       def setup_page(docx, template)

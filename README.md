@@ -62,7 +62,7 @@ SVG images need caracal's `master` (`branch: 'master'` in place of the tag) unti
 | `$$math$$` | the TeX source as code |
 | ```` ```{=openxml} ```` | passed through as raw OOXML, only with `allow_raw_openxml: true` |
 
-Front matter feeds the title block, document properties, template placeholders and some options:
+Front matter feeds the title block, document properties, template placeholders and some options. `lang` takes a language tag in any case; `lang: no`, which YAML reads as false, is Norwegian, and a list gives its first entry.
 
 ```yaml
 ---
@@ -250,7 +250,7 @@ Keys are the style ids or names in the table above; values are style names or id
 | `style_map:` | `{}` | style id or name ⇒ template style name or id |
 | `placeholder:` | `'{{content}}'` | template paragraph that receives the content |
 | `variables:` | `{}` | extra placeholder values |
-| `lang:` | none | language of documents whose front matter names none (`'de'`, `'de-CH'`, `I18n.locale`): quotes, caption labels, list and TOC titles, spelling language; front matter `lang` wins |
+| `lang:` | none | language of documents whose front matter names none (`'de'`, `'de-CH'`, `I18n.locale`): quotes, caption labels, list and TOC titles, spelling language; front matter `lang` wins. Tags count in any case (`'DE'` is German); `nil` and `false` mean none |
 | `base_dir:` | `Dir.pwd` | relative image paths resolve here (`convert_file`: the file's directory) |
 | `image_loader:` | built in | `->(src) { bytes or nil }`, e.g. for ActiveStorage |
 | `allow_remote_images:` | `false` | fetch http(s) images |

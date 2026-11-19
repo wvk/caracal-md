@@ -121,6 +121,7 @@ module Caracal
         raise ArgumentError, "unknown option(s): #{unknown.join(', ')}" if unknown.any?
 
         @options       = DEFAULTS.merge(options)
+        @options[:lang] = Language.normalize(@options[:lang], option: true)
         @warnings      = []
         @custom_styles = {}  # id => { name:, type: }
         @bookmarks     = {}  # markdown id => bookmark name

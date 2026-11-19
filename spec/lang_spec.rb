@@ -63,6 +63,74 @@ RSpec.describe 'lang option' do
     expect(body_text(document_xml(docx))).to eq('Sprache: deSiehe „oben“.')
   end
 
+  describe 'values' do
+    def german?(docx)
+      doc = document_xml(docx)
+      quotes = body_text(doc).include?('„oben“')
+      label  = paragraphs(docx, 'Caption').first.to_s.start_with?('Abbildung')
+      title  = paragraphs(docx, 'TOCHeading').include?('Abbildungsverzeichnis')
+      alert  = body_text(doc).include?('Warnung')
+      [quotes, label, title, alert].uniq
+    end
+
+    let(:content) { %(Siehe "oben".\n\n![A](a.png "Bild"){: #fig-a}\n\n> [!WARNING]\n> Achtung\n) }
+    let(:options) { { image_loader: ->(_) { png }, lof: true } }
+
+    it 'reads front matter lang: no as Norwegian' do
+      docx = Caracal::Md.render("---\nlang: no\n---\n#{quote}")
+      expect(spelling(docx)).to eq('no')
+      expect(core_language(docx)).to eq('no')
+    end
+
+    it 'takes language tags in any case' do
+      [Caracal::Md.render("---\nlang: DE\n---\n#{content}", **options), Caracal::Md.render(content, lang: 'DE', **options)].each do |docx|
+        expect(german?(docx)).to eq([true])
+        expect(spelling(docx)).to eq('de-DE')
+        expect(core_language(docx)).to eq('de')
+      end
+      expect(spelling(Caracal::Md.render(quote, lang: ' DE_ch '))).to eq('de-ch')
+    end
+
+    it 'reads the option false as no language, and applies the option beside front matter without one' do
+      docx = Caracal::Md.render(quote, lang: false)
+      expect(spelling(docx)).to be_nil
+      expect(core_language(docx)).to be_nil
+
+      renderer = Caracal::Md::Renderer.new(lang: 'de')
+      docx = renderer.render("---\nlang: 5\n---\n#{quote}")
+      expect(spelling(docx)).to eq('de-DE')
+      expect(renderer.warnings).to eq(['front matter lang 5 is no language tag; the document has no language'])
+    end
+
+    it 'takes the first entry of a list in front matter, with a warning' do
+      renderer = Caracal::Md::Renderer.new
+      docx = renderer.render("---\nlang: [DE, en]\n---\n#{quote}")
+      expect(spelling(docx)).to eq('de-DE')
+      expect(body_text(document_xml(docx))).to eq('Siehe „oben“.')
+      expect(renderer.warnings).to eq(['front matter lang lists 2 languages; the document takes the first'])
+    end
+
+    it 'reads other front matter values as no language, with a warning' do
+      renderer = Caracal::Md::Renderer.new
+      docx = renderer.render("---\nlang: yes\n---\n#{quote}")
+      expect(spelling(docx)).to be_nil
+      expect(core_language(docx)).to be_nil
+      expect(renderer.warnings).to eq(['front matter lang true is no language tag; the document has no language'])
+    end
+
+    it 'refuses other option values' do
+      [true, 5, %w[de en]].each do |value|
+        expect { Caracal::Md::Renderer.new(lang: value) }.to raise_error(ArgumentError, /no language tag/)
+      end
+    end
+
+    it 'takes any case in #markdown' do
+      docx = Caracal::Document.new
+      docx.markdown "> [!WARNING]\n> Achtung\n", lang: 'DE'
+      expect(body_text(document_xml(docx.render.string))).to start_with('Warnung')
+    end
+  end
+
   describe 'caracal-md --lang' do
     it 'sets the language of documents without front matter' do
       docx = cli(quote, '--lang', 'de')
