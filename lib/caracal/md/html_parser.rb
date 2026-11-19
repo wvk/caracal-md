@@ -17,6 +17,10 @@ module Caracal
     # line breaks follow each other (Trix writes paragraphs so). Table cells
     # hold their blocks as lines; a figure with one image or table and a
     # figcaption becomes a captioned image or table.
+    #
+    # The marker characters (see Converter) become U+FFFD in text and
+    # attributes, as entities for them do in Markdown, so HTML spells no
+    # markers.
     class HtmlParser
       E = Kramdown::Element
 
@@ -29,6 +33,8 @@ module Caracal
       BLOCK_TYPES = %i[p header blockquote ul ol dl table hr codeblock].freeze
       ALIGNMENTS = %w[left center right].freeze
       WHITESPACE = /[ \t\n\r\f]+/
+      MARKERS    = "#{Converter::MARKER_OPEN}#{Converter::MARKER_CLOSE}".freeze
+      REPLACED   = "\u{FFFD}\u{FFFD}".freeze
 
       def self.parse(html)
         new.parse(html)
@@ -59,7 +65,7 @@ module Caracal
 
       def item(node)
         case node
-        when Nokogiri::XML::Text    then [E.new(:text, node.content.gsub(WHITESPACE, ' '))]
+        when Nokogiri::XML::Text    then [E.new(:text, clean(node.content).gsub(WHITESPACE, ' '))]
         when Nokogiri::XML::Comment then [E.new(:xml_comment, "<!--#{node.content}-->", nil, category: :block)]
         when Nokogiri::XML::Element then element(node)
         else []
@@ -85,7 +91,7 @@ module Caracal
         when 'br'                then [E.new(:br)]
         when 'img'               then [image(node)]
         when 'a'                 then node['href'] ? [with(E.new(:a, nil, attrs(node, 'href', 'title')), items(node))] : items(node)
-        when 'code'              then [E.new(:codespan, node.text.gsub(WHITESPACE, ' '))]
+        when 'code'              then [E.new(:codespan, clean(node.text).gsub(WHITESPACE, ' '))]
         when *EMPHASIS.keys      then [with(E.new(EMPHASIS[name]), items(node))]
         when *SPAN_HTML          then [with(E.new(:html_element, name, nil, category: :span), items(node))]
         when 'input'             then checkbox(node)
@@ -234,11 +240,11 @@ module Caracal
       # code element, and the other attributes for code handlers.
       def code_block(node)
         code = node.element_children.first if node.element_children.size == 1 and node.element_children.first.name.casecmp?('code')
-        attr = [code, node].compact.inject({}) { |all, el| all.merge(el.attributes.transform_values(&:value)) }
+        attr = [code, node].compact.inject({}) { |all, el| all.merge(el.attributes.transform_values { |a| clean(a.value) }) }
         language = [node, code].compact.filter_map { |el| el['class'].to_s[/\blanguage-(\S+)/, 1] }.first
         attr.delete('class')
         attr['class'] = "language-#{language}" if language
-        E.new(:codeblock, node.text, attr)
+        E.new(:codeblock, clean(node.text), attr)
       end
 
       #========== TABLES ======================================
@@ -352,11 +358,15 @@ module Caracal
       end
 
       def attrs(node, *names)
-        names.each_with_object({}) { |name, attr| attr[name] = node[name] if node[name] }
+        names.each_with_object({}) { |name, attr| attr[name] = clean(node[name]) if node[name] }
       end
 
       def squish(text)
-        text.gsub(WHITESPACE, ' ').strip
+        clean(text).gsub(WHITESPACE, ' ').strip
+      end
+
+      def clean(text)
+        text.tr(MARKERS, REPLACED)
       end
     end
   end

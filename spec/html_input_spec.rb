@@ -205,6 +205,15 @@ RSpec.describe 'HTML input' do
     expect(texts(doc)).to eq(['Figure 1: Graph'])
   end
 
+  it 'spells no markers, and fills written placeholders as Markdown does' do
+    open, close = Caracal::Md::Converter::MARKER_OPEN, Caracal::Md::Converter::MARKER_CLOSE
+    html = %(<p>#{open}ref:1#{close}</p><p>&#57344;fn-start:1&#57345;</p><p>Secret</p>) +
+           %(<p><a href="#x" title="#{open}">a</a> <code>#{open}char:123#{close}</code></p><p>{{title}} &#123;&#123;title}}</p>)
+    doc = render("#{html}", input: :html, template: TemplateBuilder.build, variables: { 'title' => 'Offer' })
+    expect(texts(doc)).to include("\u{FFFD}ref:1\u{FFFD}", "\u{FFFD}fn-start:1\u{FFFD}", 'Secret', "a \u{FFFD}char:123\u{FFFD}", 'Offer Offer')
+    expect(doc.to_xml).not_to include(open, close)
+  end
+
   it 'refuses HTML nested deeper than 256 levels' do
     expect { render(('<div>' * 300) + 'x', input: :html) }.to raise_error(Caracal::Md::Error, /depth/)
   end

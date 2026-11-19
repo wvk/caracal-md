@@ -86,6 +86,7 @@ module Caracal
         lot:               false,           # list of tables after the table of contents
         code_handlers:     nil,             # { language => handler } or CodeHandlers: fenced blocks as images
         svg_rasterizer:    nil,             # call(CodeBlock with the cleaned SVG) => PNG/JPEG/GIF fallback
+        literal_braces:    false,           # { and } written as entities become markers (need PostProcessor), see #entity_char
         input:             :markdown,       # :markdown or :html (see HtmlParser)
       }.freeze
 
@@ -99,6 +100,12 @@ module Caracal
       # only), [@fig:a; @tbl:b].
       CROSS_REF_LABEL = /[Ff]ig:[\w.:-]*\w|[Tt]bl:[\w.:-]*\w/
       CROSS_REF = /\[(-?@(?:#{CROSS_REF_LABEL})(?:\s*;\s*-?@(?:#{CROSS_REF_LABEL}))*)\]|(?<![\w@])@(#{CROSS_REF_LABEL})/
+
+      # Characters an entity keeps out of {{placeholders}}.
+      LITERAL_CHARS = %w[{ }].freeze
+
+      # What an entity for a marker character becomes, see #entity_char.
+      REPLACEMENT_CHAR = "\u{FFFD}".freeze
 
       # A pandoc attribute right after an image: {#id}.
       PANDOC_ID = /\A\{#([^\s{}]+)\}/
@@ -866,7 +873,7 @@ module Caracal
         when :br              then p.br
         when :smart_quote     then text(p, smart_quote(el.value), fmt)
         when :typographic_sym then text(p, TYPOGRAPHIC.fetch(el.value, ''), fmt)
-        when :entity          then text(p, el.value.char, fmt)
+        when :entity          then text(p, entity_char(el), fmt)
         when :footnote        then footnote_reference(el, p, fmt)
         when :html_element    then inline_html(el, p, fmt)
         when :img             then text(p, el.attr['alt'].to_s, fmt.merge(italic: true))
@@ -950,6 +957,19 @@ module Caracal
       def safe_link?(href)
         scheme = href[/\A([a-z][a-z0-9+.-]*):/i, 1]
         scheme.nil? ? !href.empty? : LINK_SCHEMES.include?(scheme.downcase)
+      end
+
+      # The character an entity stands for. With literal_braces, { and }
+      # become char markers, which PostProcessor turns back into braces after
+      # the template merge: written as &#123;, they form no {{placeholder}}
+      # (Caracal::Md.escape writes them so). The marker characters become
+      # U+FFFD: link texts, captions and the table of contents join the text
+      # of their elements, so entities could spell a marker there.
+      def entity_char(el)
+        char = el.value.char
+        return REPLACEMENT_CHAR if char == MARKER_OPEN or char == MARKER_CLOSE
+
+        (@options[:literal_braces] and LITERAL_CHARS.include?(char)) ? Converter.marker('char', char.ord) : char
       end
 
       def smart_quote(kind)
@@ -1117,7 +1137,7 @@ module Caracal
         when :text, :codespan, :math, :abbreviation then el.value.to_s
         when :smart_quote     then smart_quote(el.value)
         when :typographic_sym then TYPOGRAPHIC.fetch(el.value, '')
-        when :entity          then el.value.char
+        when :entity          then entity_char(el)
         when :img             then el.attr['alt'].to_s
         when :br              then "\n"
         when :footnote, :xml_comment, :comment then ''
