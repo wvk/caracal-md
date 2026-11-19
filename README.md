@@ -286,7 +286,7 @@ Caracal::Document.save 'report.docx' do |docx|
 end
 ```
 
-Here footnotes become a numbered list after the content, captions stay unnumbered and `[](#id)` stays a plain link: Word footnotes and fields need the finished package, which `Caracal::Md.render` builds.
+Here footnotes become a numbered list after the content, captions stay unnumbered, `[](#id)` stays a plain link and ordered lists start at 1: Word footnotes, fields and start numbers need the finished package, which `Caracal::Md.render` builds.
 
 
 ## Security
@@ -296,6 +296,7 @@ Treat Markdown from users like any other input:
 * Local images are read only inside `base_dir`, symlinks resolved; paths outside it fall back to their alt text.
 * Remote images are off unless `allow_remote_images: true`. Turning them on lets the document's author make your server fetch URLs, internal ones included; consider an `image_loader` with an allowlist instead.
 * Raw OOXML is off unless `allow_raw_openxml: true`.
+* Text from the document, its front matter, `variables:` or caracal commands stays text: the markers caracal-md leaves for its post-processing carry a key new for every render.
 * Values interpolated into Markdown go through `Caracal::Md.escape`, see [Values in Markdown](#values-in-markdown).
 * Code handlers get the block's source from the document and run what you configure; their output is checked like an image. See [Diagrams](#diagrams) for the limits and for sandboxing diagram tools.
 * SVG is cleaned before the rasterizer sees it, see [SVG](#svg).
@@ -305,7 +306,7 @@ Treat Markdown from users like any other input:
 ## How it works
 
 1. `FrontMatter` splits off the YAML; kramdown parses the rest.
-2. `Converter` walks the syntax tree and issues caracal commands, referring to styles by the ids in `Styles`; `CodeHandlers` turn fenced blocks into checked image bytes, `Svg` cleans SVG for the rasterizer. What caracal has no command for (footnotes, list start numbers, caption numbers, cross-references, lists of figures) it marks with private-use characters.
+2. `Converter` walks the syntax tree and issues caracal commands, referring to styles by the ids in `Styles`; `CodeHandlers` turn fenced blocks into checked image bytes, `Svg` cleans SVG for the rasterizer. What caracal has no command for (footnotes, list start numbers, caption numbers, cross-references, lists of figures) it marks with private-use characters and a key new for every render, so no text from the document spells a marker.
 3. caracal renders a complete package.
 4. With a template, `TemplateMerger` moves the body into a copy of the template: it resolves styles by name, numbers lists through the template's list styles where they have numbering (renumbering caracal's elsewhere), copies images and links, and fills the placeholders.
 5. `PostProcessor` turns the markers into footnotes, start numbers and fields (`SEQ`, `REF`, table of figures) with their results filled in, numbered in the final document order; `Language` and `CoreProperties` write `lang` and the document properties.

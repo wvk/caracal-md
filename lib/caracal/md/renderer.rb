@@ -64,7 +64,8 @@ module Caracal
         @options[:styles]&.call(docx)
 
         captions  = captions(meta)
-        converter = Converter.new(converter_options(meta, template, docx).merge(captions: captions))
+        markers   = Markers.new
+        converter = Converter.new(converter_options(meta, template, docx).merge(captions: captions, markers: markers))
         converter.convert(body, docx, meta: meta)
         converter.define_custom_styles(docx)
         @options[:document]&.call(docx)
@@ -77,7 +78,7 @@ module Caracal
           package = merger.merge
           @warnings.concat merger.warnings
         end
-        PostProcessor.new(package, captions: captions).apply
+        PostProcessor.new(package, markers: markers, captions: captions).apply
         Language.apply(package, meta['lang']) if meta['lang']
         CoreProperties.apply(package, meta)
         package.to_s

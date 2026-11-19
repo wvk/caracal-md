@@ -1,6 +1,7 @@
 module Caracal
   module Md
-    # Turns the converter's markers into OOXML caracal has no command for:
+    # Turns the converter's markers (those of +markers+, the render's) into
+    # OOXML caracal has no command for:
     #
     # * fn:N runs become footnote references, and the paragraphs between
     #   fn-start:N and fn-end:N move into word/footnotes.xml;
@@ -12,9 +13,8 @@ module Caracal
       NS = Package::NS
       W  = NS['w']
 
-      # The char markers the converter writes: those of Converter::LITERAL_CHARS.
-      CHAR_PREFIX = "#{Converter::MARKER_OPEN}char:".freeze
-      CHAR        = /#{CHAR_PREFIX}(#{Converter::LITERAL_CHARS.map(&:ord).join('|')})#{Converter::MARKER_CLOSE}/o
+      # The characters char markers stand for: Converter::LITERAL_CHARS.
+      LITERAL_CODES = Converter::LITERAL_CHARS.to_h { |char| [char.ord, char] }.freeze
 
       FOOTNOTES_XML = <<~XML.freeze
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -24,8 +24,9 @@ module Caracal
         </w:footnotes>
       XML
 
-      def initialize(package, captions: nil)
+      def initialize(package, markers:, captions: nil)
         @package  = package
+        @markers  = markers
         @captions = captions
         @main     = package.main_part
         @doc      = package.xml(@main)
@@ -34,7 +35,7 @@ module Caracal
       def apply
         literal_chars
         markers = collect_markers
-        CaptionFields.new(@package, @captions).apply(markers) if @captions
+        CaptionFields.new(@package, @captions, @markers).apply(markers) if @captions
         list_starts(markers['ol-start'] || [])
         footnotes(markers) if markers['fn-start']
         @package
@@ -47,18 +48,20 @@ module Caracal
       # caracal's table of contents, and in attributes, e.g. a table's
       # w:tblCaption.
       def literal_chars
-        @doc.xpath("//w:t[contains(., '#{CHAR_PREFIX}')] | //@*[contains(., '#{CHAR_PREFIX}')]", NS).each do |node|
-          node.content = node.content.gsub(CHAR) { Regexp.last_match(1).to_i.chr(Encoding::UTF_8) }
+        prefix = "#{@markers.prefix}char:"
+        @doc.xpath("//w:t[contains(., '#{prefix}')] | //@*[contains(., '#{prefix}')]", NS).each do |node|
+          node.content = node.content.gsub(@markers.pattern) do |marker|
+            kind, number = @markers.parse(marker)
+            (kind == 'char' and LITERAL_CODES[number]) or marker
+          end
         end
       end
 
       # { kind => [[number, w:t node]] } for every text node that is a marker.
       def collect_markers
         @doc.xpath('//w:t', NS).each_with_object({}) do |t, markers|
-          match = Converter::MARKER.match(t.content)
-          next unless match and match[0] == t.content
-
-          (markers[match[1]] ||= []) << [match[2].to_i, t]
+          kind, number = @markers.parse(t.content)
+          (markers[kind] ||= []) << [number, t] if kind
         end
       end
 
