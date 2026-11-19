@@ -12,6 +12,7 @@ First release.
 * SVG images and SVG from code handlers, cleaned (allowlist, no external references, no DTD) and embedded as SVG with a PNG fallback from a pluggable `svg_rasterizer` (`--svg-rasterizer`), blank without one; `data:image/svg+xml` URIs. With caracal 2.0.0, the rasterizer's PNG alone.
 * Default style set named after Word's built-in styles, and `--print-reference-doc` to restyle it in Word.
 * Word templates (.docx, .dotx, .docm, .dotm): styles matched by name, `style_map`, content at `{{content}}`, `{{placeholders}}` from front matter.
+* A loaded `Caracal::Md::Template` is frozen and serves any number of renders, also in parallel threads.
 * Lists styled *List Bullet* / *List Number* (2–5 for nested levels); with a template whose list styles carry numbering, lists take the template's bullets, numbers and indentation.
 * Front matter for the title block, document properties, language and table of contents.
 * `lang:` (`--lang`) sets the language of documents whose front matter names none.
