@@ -88,7 +88,10 @@ module Caracal
         code_cache:        nil,             # fetch(key) { bytes }: handler and rasterizer output across renders
         svg_rasterizer:    nil,             # call(CodeBlock with the cleaned SVG) => PNG/JPEG/GIF fallback
         literal_braces:    false,           # { and } written as entities become markers (need PostProcessor), see #entity_char
+        input:             :markdown,       # :markdown or :html (see HtmlParser)
       }.freeze
+
+      INPUTS = %i[markdown html].freeze
 
       # Raster image bytes with their natural size in points, and the
       # cleaned SVG they stand in for, if any.
@@ -110,6 +113,14 @@ module Caracal
 
       attr_reader :warnings, :custom_styles
 
+      # :markdown or :html for an input option given as a Symbol or String.
+      def self.input(value)
+        input = value.to_s.downcase.to_sym
+        raise ArgumentError, "input: #{value.inspect} is neither :markdown nor :html" unless INPUTS.include?(input)
+
+        input
+      end
+
       # The text of a Markdown snippet, without formatting.
       def self.plain_text(markdown, quotes: :en)
         converter = new(quotes: quotes, highlight: false, image_loader: ->(_) {})
@@ -122,6 +133,7 @@ module Caracal
         raise ArgumentError, "unknown option(s): #{unknown.join(', ')}" if unknown.any?
 
         @options       = DEFAULTS.merge(options)
+        @input         = Converter.input(@options[:input])
         @warnings      = []
         @custom_styles = {}  # id => { name:, type: }
         @bookmarks     = {}  # markdown id => bookmark name
@@ -137,10 +149,10 @@ module Caracal
         @highlighter   = Highlighter.new(theme: @options[:highlight_theme]) if @options[:highlight] and Highlighter.available?
       end
 
-      # Converts +markdown+ onto +target+. +meta+ is the front matter, used for
-      # the title block.
+      # Converts +markdown+ (or HTML, with input: :html) onto +target+. +meta+
+      # is the front matter, used for the title block.
       def convert(markdown, target, meta: {})
-        root = parse(markdown)
+        root = @input == :html ? HtmlParser.parse(markdown) : parse(markdown)
         @heading_offset = heading_offset(root)
         lof = (@options[:lof] and not contains_directive?(root, :lof))
         lot = (@options[:lot] and not contains_directive?(root, :lot))
@@ -232,7 +244,7 @@ module Caracal
         when :codeblock    then code_block(el, target, ctx)
         when :ul, :ol      then list(el, target, ctx)
         when :dl           then definition_list(el, target, ctx)
-        when :table        then table(el, target, ctx)
+        when :table        then table(el, target, ctx, caption: el.options[:caption])
         when :hr           then target.hr
         when :math         then code_block(el, target, ctx, language: 'tex', handler: 'math')
         when :html_element then html_block(el, target, ctx)
@@ -423,7 +435,7 @@ module Caracal
       def list(el, target, ctx)
         return toc(target) if toc_ial?(el)
 
-        start = el.options[:first_list_marker].to_s[/\A\d+/].to_i if el.type == :ol
+        start = list_start(el)
         target.public_send(el.type) do |list|
           el.children.each_with_index do |li, index|
             next unless li.type == :li
@@ -432,6 +444,14 @@ module Caracal
             list_item(li, list, ctx, marker: marker)
           end
         end
+      end
+
+      # The number an ordered list starts at: its first marker in Markdown,
+      # its start attribute in HTML.
+      def list_start(el)
+        return unless el.type == :ol
+
+        (el.attr['start'] || el.options[:first_list_marker]).to_s[/\A\d+/]&.to_i || 1
       end
 
       def list_item(li, list, ctx, marker: nil)
@@ -452,7 +472,7 @@ module Caracal
         when :ul, :ol
           return flatten_list(el, item, ctx) if item.list_item_level >= MAX_LIST_LEVEL
 
-          start = el.options[:first_list_marker].to_s[/\A\d+/].to_i if el.type == :ol
+          start = list_start(el)
           warn "a nested ordered list starts at 1 instead of #{start}" if start and start > 1
           item.public_send(el.type) do |list|
             el.children.each { |li| list_item(li, list, ctx) if li.type == :li }
@@ -885,7 +905,7 @@ module Caracal
       end
 
       def link(el, p, fmt)
-        href    = el.attr['href'].to_s.strip
+        href    = clean_href(el.attr['href'])
         content = plain_text(el)
         # [](#id) shows the target's label and number, or its heading text
         if @captions and content.empty? and href.start_with?('#') and href.length > 1
@@ -914,7 +934,15 @@ module Caracal
         return href unless @options[:link]
 
         target = @options[:link].call(href.dup.freeze)
-        (target.to_s.strip if target)
+        (clean_href(target) if target)
+      end
+
+      # A link target as a URL parser reads it: without tabs and line breaks,
+      # and without control characters and spaces at its ends. A browser
+      # takes "java\tscript:" for "javascript:", so the scheme is checked on
+      # this form, and this form goes into the document.
+      def clean_href(href)
+        href.to_s.delete("\t\n\r").gsub(/\A[\u0000-\u0020]+|[\u0000-\u0020]+\z/, '')
       end
 
       # A link's content without the hyperlink, or +href+ when it has none.

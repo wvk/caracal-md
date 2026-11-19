@@ -9,6 +9,7 @@ Caracal::Md.convert_file 'notes.md'                                  # => notes.
 Caracal::Md.convert_file 'notes.md', 'notes.docx', template: 'corporate.dotx'
 
 docx = Caracal::Md.render(markdown, template: 'corporate.dotx')       # => DOCX bytes
+docx = Caracal::Md.render(post.body.to_s, input: :html)              # rich text from web editors
 ```
 
 ```sh
@@ -149,6 +150,28 @@ Front matter is YAML, where `:`, `#`, `[`, `{`, `@` and words such as `yes` have
 front_matter = "---\ntitle: #{Caracal::Md.escape(report.title).to_json}\n---\n"
 ```
 
+## HTML input
+
+Rich text from web editors (Action Text with Trix or Tiptap), CMS fields and HTML mails arrive as HTML. `input: :html` reads it, and everything else works as for Markdown: templates, styles, numbered captions, code handlers.
+
+```ruby
+Caracal::Md.render(post.body.to_s, input: :html, template: 'corporate.dotx')
+Caracal::Md.convert_file 'mail.html'              # .html and .htm files are HTML
+docx.markdown post.body.to_s, input: :html          # inside caracal
+```
+
+```sh
+caracal-md mail.html
+caracal-md --input html - < post.html
+```
+
+* Headings, paragraphs, `strong`/`b`, `em`/`i`, `u`, `s`/`del`, `code`, `mark`, `sub`, `sup`, links, nested lists with `start`, tables, `blockquote`, `hr`, `br`, definition lists and task checkboxes convert like their Markdown counterparts. A table takes its header rows from `thead`, else from its leading rows of `th`, and its caption from `caption`.
+* `pre` with `code class="language-x"` is highlighted and goes to code handlers like a fenced block; the `pre`'s other attributes (`id`, `title`, …) are the block's.
+* `img` goes through the image loader with the rules of Markdown images; Action Text's image URLs need an `image_loader` that reads them from Active Storage. A `figure` holding one image, or one table, and a `figcaption` becomes the image or table with that caption.
+* Trix writes paragraphs as `div` with two `<br>` between them, Tiptap as `p`, and list items as `li` with `p`: both read as paragraphs.
+* Other elements keep their text. The contents of `script`, `style`, `template` and the document's `head` are dropped.
+* The text stays text: `*`, `#`, `==` and other Markdown signs show as they are. Paragraphs reading `[TOC]` or `\newpage`, cross-references such as `@fig:id` and comments such as `<!-- pagebreak -->` work as in Markdown, and so do `{{key}}` placeholders, which the template merge fills, whether the braces are written as `{` or `&#123;`.
+
 
 ## Diagrams
 
@@ -265,6 +288,7 @@ Keys are the style ids or names in the table above; values are style names or id
 | `placeholder:` | `'{{content}}'` | template paragraph that receives the content |
 | `variables:` | `{}` | extra placeholder values |
 | `lang:` | none | language of documents whose front matter names none (`'de'`, `'de-CH'`, `I18n.locale`): quotes, caption labels, list and TOC titles, spelling language; front matter `lang` wins |
+| `input:` | `:markdown` | `:html` reads HTML, see [HTML input](#html-input); `convert_file` and the CLI take `.html` and `.htm` files as HTML |
 | `base_dir:` | `Dir.pwd` | relative image paths resolve here (`convert_file`: the file's directory) |
 | `image_loader:` | built in | `->(src) { bytes or nil }`, e.g. for ActiveStorage |
 | `allow_remote_images:` | `false` | fetch http(s) images |
@@ -306,7 +330,7 @@ Here footnotes become a numbered list after the content, captions stay unnumbere
 
 ## Security
 
-Treat Markdown from users like any other input:
+Treat Markdown and HTML from users like any other input:
 
 * Local images are read only inside `base_dir`, symlinks resolved; paths outside it fall back to their alt text.
 * Remote images are off unless `allow_remote_images: true`. Turning them on lets the document's author make your server fetch URLs, internal ones included; consider an `image_loader` with an allowlist instead.
@@ -319,7 +343,7 @@ Treat Markdown from users like any other input:
 
 ## How it works
 
-1. `FrontMatter` splits off the YAML; kramdown parses the rest.
+1. `FrontMatter` splits off the YAML; kramdown parses the rest. HTML goes through `HtmlParser` (Nokogiri's HTML5 parser) into the same element tree.
 2. `Converter` walks the syntax tree and issues caracal commands, referring to styles by the ids in `Styles`; `CodeHandlers` turn fenced blocks into checked image bytes, `Svg` cleans SVG for the rasterizer. What caracal has no command for (footnotes, list start numbers, caption numbers, cross-references, lists of figures) it marks with private-use characters.
 3. caracal renders a complete package.
 4. With a template, `TemplateMerger` moves the body into a copy of the template: it resolves styles by name, numbers lists through the template's list styles where they have numbering (renumbering caracal's elsewhere), copies images and links, and fills the placeholders.

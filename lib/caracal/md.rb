@@ -6,6 +6,7 @@ module Caracal
   #   Caracal::Md.render(markdown)                          # => DOCX bytes, default styles
   #   Caracal::Md.render(markdown, template: 'corp.dotx')   # => DOCX bytes in a Word template
   #   Caracal::Md.convert_file('notes.md')                  # writes notes.docx
+  #   Caracal::Md.render(html, input: :html)                # rich text from web editors
   #
   #   Caracal::Document.save('report.docx') do |docx|       # Markdown inside a caracal document
   #     docx.h1 'Report'
@@ -35,9 +36,11 @@ module Caracal
       path
     end
 
-    # Converts a Markdown file; images resolve relative to it.
+    # Converts a Markdown file, or an HTML file (.html, .htm); images resolve
+    # relative to it.
     def self.convert_file(input, output = nil, **options)
-      output ||= input.sub(/\.(md|markdown|mdown|mkd)\z/i, '') + '.docx'
+      options = { input: :html }.merge(options) if input.to_s.match?(/\.html?\z/i)
+      output ||= input.sub(/\.(md|markdown|mdown|mkd|html?)\z/i, '') + '.docx'
       save(File.read(input, encoding: 'UTF-8'), output, base_dir: File.dirname(File.expand_path(input)), **options)
     end
 
@@ -66,6 +69,7 @@ require_relative 'md/parser'
 require_relative 'md/captions'
 require_relative 'md/converter'
 require_relative 'md/escape'
+require_relative 'md/html_parser'
 require_relative 'md/template'
 require_relative 'md/template_merger'
 require_relative 'md/caption_fields'
