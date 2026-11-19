@@ -13,6 +13,7 @@ module Caracal
         style_map:           {},        # Styles id or name => template style id or name
         placeholder:         '{{content}}',
         variables:           {},        # extra {{key}} values for the template
+        lang:                nil,       # language of documents whose front matter names none ('de', 'de-CH', :en, …)
         base_dir:            nil,       # where relative image paths resolve; defaults to Dir.pwd
         image_loader:        nil,       # callable(src) => bytes or nil, replaces the default loader
         allow_remote_images: false,
@@ -53,6 +54,7 @@ module Caracal
 
       def render(markdown)
         meta, body = FrontMatter.split(markdown.to_s)
+        meta       = with_lang(meta)
         template   = @options[:template] && Template.load(@options[:template])
         variables  = FrontMatter.to_variables(meta).merge(@options[:variables].transform_keys(&:to_s))
 
@@ -82,6 +84,16 @@ module Caracal
       end
 
       private
+
+      # Front matter with the lang option as its "lang" when it names none:
+      # the language decides quotes, caption labels, list titles, the
+      # spelling language and the document property.
+      def with_lang(meta)
+        lang = @options[:lang].to_s.strip
+        return meta if lang.empty? or not meta['lang'].to_s.strip.empty?
+
+        meta.merge('lang' => lang)
+      end
 
       def setup_page(docx, template)
         if template

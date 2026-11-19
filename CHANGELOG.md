@@ -14,6 +14,7 @@ First release.
 * Word templates (.docx, .dotx, .docm, .dotm): styles matched by name, `style_map`, content at `{{content}}`, `{{placeholders}}` from front matter.
 * Lists styled *List Bullet* / *List Number* (2–5 for nested levels); with a template whose list styles carry numbering, lists take the template's bullets, numbers and indentation.
 * Front matter for the title block, document properties, language and table of contents.
+* `lang:` (`--lang`) sets the language of documents whose front matter names none.
 * `heading_offset:` (front matter `heading-offset`, `--heading-offset`) shifts heading levels; `auto` makes the highest level in use Heading 1.
 * `custom-style` attributes for paragraphs, spans and tables.
 * `Caracal::Md.escape` for values interpolated into Markdown.
