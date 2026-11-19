@@ -6,17 +6,15 @@ module Caracal
     # Walks kramdown's syntax tree and issues caracal commands on a target: a
     # Caracal::Document, a header or footer, or a table cell.
     #
-    # Styles are referred to by the ids in Styles. Footnotes and ordered-list
-    # start numbers are emitted as markers (see Markers) that PostProcessor
-    # turns into OOXML caracal has no command for.
+    # Styles are referred to by the ids in Styles. Footnotes, ordered-list
+    # start numbers, numbered captions and references are emitted as the
+    # render's markers (option markers:, see Markers) that PostProcessor
+    # turns into OOXML caracal has no command for. Without markers, as in
+    # #markdown, the converter writes what needs none: footnotes as a list,
+    # captions unnumbered, lists from 1.
     class Converter
-      MARKER_OPEN  = "\u{E000}".freeze
-      MARKER_CLOSE = "\u{E001}".freeze
-      MARKER       = /#{MARKER_OPEN}([a-z-]+):(\d+)#{MARKER_CLOSE}/o
-
-      def self.marker(kind, number)
-        "#{MARKER_OPEN}#{kind}:#{number}#{MARKER_CLOSE}"
-      end
+      MARKER_OPEN  = Markers::OPEN
+      MARKER_CLOSE = Markers::CLOSE
 
       QUOTES = {
         en: %w[lsquo rsquo ldquo rdquo],
@@ -86,7 +84,8 @@ module Caracal
         lot:               false,           # list of tables after the table of contents
         code_handlers:     nil,             # { language => handler } or CodeHandlers: fenced blocks as images
         svg_rasterizer:    nil,             # call(CodeBlock with the cleaned SVG) => PNG/JPEG/GIF fallback
-        literal_braces:    false,           # { and } written as entities become markers (need PostProcessor), see #entity_char
+        literal_braces:    false,           # { and } written as entities become markers, see #entity_char
+        markers:           nil,             # Markers of the render, for PostProcessor; nil writes no markers
       }.freeze
 
       # Raster image bytes with their natural size in points, and the
@@ -125,7 +124,8 @@ module Caracal
         @custom_styles = {}  # id => { name:, type: }
         @bookmarks     = {}  # markdown id => bookmark name
         @footnotes     = []  # [number, definition element]
-        @captions      = @options[:captions]
+        @markers       = @options[:markers]
+        @captions      = (@options[:captions] if @markers)
         @targets       = []  # ids with a bookmark: headings and numbered captions
         @referenced    = []  # ids cross-references point to
         @caption_count = 0
@@ -427,10 +427,20 @@ module Caracal
           el.children.each_with_index do |li, index|
             next unless li.type == :li
 
-            marker = Converter.marker('ol-start', start) if index.zero? and start and start != 1 and list.list_level.zero?
+            marker = list_start_marker(start) if index.zero? and list.list_level.zero?
             list_item(li, list, ctx, marker: marker)
           end
         end
+      end
+
+      # The marker that starts a list at +start+, which takes the render's
+      # PostProcessor; without one the list starts at 1.
+      def list_start_marker(start)
+        return if start.nil? or start == 1
+        return marker('ol-start', start) if @markers
+
+        warn "an ordered list starts at 1 instead of #{start}; Caracal::Md.render sets start numbers"
+        nil
       end
 
       def list_item(li, list, ctx, marker: nil)
@@ -615,7 +625,7 @@ module Caracal
           p.bookmark_start id: name, name: name
           p.text "#{@captions.label(kind)} ", bold: true
           p.bookmark_start id: number_bookmark(name), name: number_bookmark(name) if id
-          p.text Converter.marker("caption-#{kind}", 0), bold: true
+          p.text marker("caption-#{kind}", 0), bold: true
           p.bookmark_end id: number_bookmark(name) if id
           p.bookmark_end id: name
           unless text.empty?
@@ -635,7 +645,7 @@ module Caracal
         @referenced << id
         name = bookmark_name(id)
         name = number_bookmark(name) if number_only
-        text(p, Converter.marker('ref', @captions.reference(name, source)), fmt)
+        text(p, marker('ref', @captions.reference(name, source)), fmt)
       end
 
       # Text with pandoc-crossref references turned into ref markers.
@@ -673,7 +683,7 @@ module Caracal
 
         target.p @captions.list_title(kind), style: 'TOCHeading'
         # the style passes the template merge with the marker, for the entries
-        target.p Converter.marker("list-#{kind}", 0), style: 'TableofFigures'
+        target.p marker("list-#{kind}", 0), style: 'TableofFigures'
       end
 
       def html_block(el, target, ctx)
@@ -949,7 +959,16 @@ module Caracal
         char = el.value.char
         return REPLACEMENT_CHAR if char == MARKER_OPEN or char == MARKER_CLOSE
 
-        (@options[:literal_braces] and LITERAL_CHARS.include?(char)) ? Converter.marker('char', char.ord) : char
+        (@options[:literal_braces] and @markers and LITERAL_CHARS.include?(char)) ? marker('char', char.ord) : char
+      end
+
+      def marker(kind, number)
+        @markers.marker(kind, number)
+      end
+
+      # Word footnotes, which need the render's PostProcessor.
+      def native_footnotes?
+        (@options[:footnotes] == :native and @markers)
       end
 
       def smart_quote(kind)
@@ -964,8 +983,8 @@ module Caracal
       def footnote_reference(el, p, fmt)
         number = @footnotes.size + 1
         @footnotes << [number, el.value]
-        if @options[:footnotes] == :native
-          p.text Converter.marker('fn', number), style: 'FootnoteReference'
+        if native_footnotes?
+          p.text marker('fn', number), style: 'FootnoteReference'
         else
           p.text number.to_s, fmt.merge(vertical_align: :superscript)
         end
@@ -974,12 +993,12 @@ module Caracal
       def footnote_section(target)
         return if @footnotes.empty?
 
-        target.hr unless @options[:footnotes] == :native
+        target.hr unless native_footnotes?
         @footnotes.each do |number, definition|
-          if @options[:footnotes] == :native
-            target.p Converter.marker('fn-start', number), style: 'FootnoteText'
+          if native_footnotes?
+            target.p marker('fn-start', number), style: 'FootnoteText'
             blocks(definition&.children || [], target, { style: 'FootnoteText', list_style: 'FootnoteText' })
-            target.p Converter.marker('fn-end', number), style: 'FootnoteText'
+            target.p marker('fn-end', number), style: 'FootnoteText'
           else
             first, *rest = (definition&.children || []).reject { |c| c.type == :blank }
             target.p(style: 'FootnoteText') do |p|

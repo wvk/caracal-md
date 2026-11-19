@@ -109,9 +109,9 @@ RSpec.describe 'Caracal::Md.escape' do
       end
     end
 
-    it 'turns char markers typed into the Markdown into braces alone' do
+    it 'keeps char markers typed into the Markdown as text' do
       doc = render("A #{open_char}char:123#{close_char} B #{open_char}char:60#{close_char} C #{open_char}char:0#{close_char} D\n")
-      expect(texts(doc)).to eq(["A { B #{open_char}char:60#{close_char} C #{open_char}char:0#{close_char} D"])
+      expect(texts(doc)).to eq(["A #{open_char}char:123#{close_char} B #{open_char}char:60#{close_char} C #{open_char}char:0#{close_char} D"])
     end
   end
 

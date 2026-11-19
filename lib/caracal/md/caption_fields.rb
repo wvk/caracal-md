@@ -16,9 +16,10 @@ module Caracal
       # Hidden text, for the chapter field LibreOffice would show despite \h.
       HIDDEN = '<w:rPr><w:vanish/></w:rPr>'.freeze
 
-      def initialize(package, captions)
+      def initialize(package, captions, markers)
         @package  = package
         @captions = captions
+        @markers  = markers
         @main     = package.main_part
         @doc      = package.xml(@main)
         @numbered = Hash.new { |hash, kind| hash[kind] = [] } # kind => caption paragraphs
@@ -123,7 +124,7 @@ module Caracal
             open.each_value { |name| texts[name] << node.content }
           end
         end
-        texts.transform_values { |text| text.gsub(Converter::MARKER, '').strip }
+        texts.transform_values { |text| text.gsub(@markers.pattern, '').strip }
       end
 
       #========== LISTS =======================================
