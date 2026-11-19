@@ -34,9 +34,10 @@ reference = nil
 local_links_as_text = ->(href) { href.match?(/\A([a-z][a-z0-9+.-]*:|#)/i) ? href : nil }
 
 parser = OptionParser.new do |o|
-  o.banner = 'Usage: caracal-md [options] INPUT.md   (INPUT "-" reads stdin)'
+  o.banner = 'Usage: caracal-md [options] INPUT.md|INPUT.html   (INPUT "-" reads stdin)'
   o.separator ''
   o.on('-o', '--output FILE', 'DOCX to write (default: INPUT with .docx)') { |v| output = v }
+  o.on('--input FORMAT', %w[markdown html], 'markdown or html (default: html for .html and .htm files, else markdown)') { |v| options[:input] = v.to_sym }
   o.on('-t', '--template FILE', 'Word template (.docx/.dotx) providing styles, page setup, headers and footers') { |v| options[:template] = v }
   o.on('-s', '--style-map FROM=TO', 'use template style TO for FROM (id or name), e.g. "Quote=Intense Quote"; repeatable') do |v|
     from, to = v.split('=', 2)
@@ -102,7 +103,8 @@ begin
     output ||= 'output.docx'
   else
     markdown = File.read(input, encoding: 'UTF-8')
-    output ||= input.sub(/\.(md|markdown|mdown|mkd)\z/i, '') + '.docx'
+    options[:input] ||= :html if input.match?(/\.html?\z/i)
+    output ||= input.sub(/\.(md|markdown|mdown|mkd|html?)\z/i, '') + '.docx'
     options[:base_dir] ||= File.dirname(File.expand_path(input))
   end
 

@@ -7,15 +7,16 @@ module DocxHelpers
 
   CLI = File.expand_path('../../bin/caracal-md', __dir__)
 
-  # Runs bin/caracal-md on +markdown+ with +args+; returns the DOCX it writes.
-  def cli(markdown, *args)
+  # Runs bin/caracal-md on +markdown+, written to +file+, with +args+;
+  # returns the DOCX it writes.
+  def cli(markdown, *args, file: 'input.md')
     Dir.mktmpdir do |dir|
-      input = File.join(dir, 'input.md')
+      input = File.join(dir, file)
       File.write(input, markdown)
       _, error, status = Open3.capture3(RbConfig.ruby, CLI, *args, input)
       raise "caracal-md failed: #{error}" unless status.success?
 
-      File.binread(File.join(dir, 'input.docx'))
+      File.binread(File.join(dir, file.sub(/\.[^.]+\z/, '.docx')))
     end
   end
 
