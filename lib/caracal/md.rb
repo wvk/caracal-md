@@ -20,7 +20,8 @@ module Caracal
     #
     # Each line is escaped as the start of a block and line breaks become
     # <br>, so the result fits paragraphs, list items, table cells and
-    # headings alike; inside code spans it shows its escapes.
+    # headings alike; inside code spans, image titles and alt texts it shows
+    # its escapes. In front matter, write it as a JSON string (to_json).
     def self.escape(text)
       Escape.markdown(text)
     end

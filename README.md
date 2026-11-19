@@ -141,7 +141,13 @@ MD
 Caracal::Md.render(markdown, template: 'offer.dotx')
 ```
 
-Line breaks in the value become line breaks in the document (`<br>`), so the escaped value is one line of Markdown and fits paragraphs, list items, table cells and headings alike. Inside code spans and fenced code it shows its escapes. It writes braces as `&#123;`, which stay braces through the template merge; `{{key}}` written in the Markdown itself is filled as before.
+Line breaks in the value become line breaks in the document (`<br>`), so the escaped value is one line of Markdown and fits paragraphs, list items, table cells and headings alike. Inside code spans, fenced code, image titles and alt texts it shows its escapes. It writes braces as `&#123;`, which stay braces through the template merge; `{{key}}` written in the Markdown itself is filled as before. U+E000 and U+E001, two private-use characters that caracal-md keeps for its own markers, come out as U+FFFD.
+
+Front matter is YAML, where `:`, `#`, `[`, `{`, `@` and words such as `yes` have a meaning of their own. Write an escaped value there as a JSON string (`to_json`, from Ruby's `json`), which YAML reads as a quoted scalar:
+
+```ruby
+front_matter = "---\ntitle: #{Caracal::Md.escape(report.title).to_json}\n---\n"
+```
 
 
 ## Diagrams

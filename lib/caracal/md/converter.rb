@@ -101,6 +101,9 @@ module Caracal
       # Characters an entity keeps out of {{placeholders}}.
       LITERAL_CHARS = %w[{ }].freeze
 
+      # What an entity for a marker character becomes, see #entity_char.
+      REPLACEMENT_CHAR = "\u{FFFD}".freeze
+
       # A pandoc attribute right after an image: {#id}.
       PANDOC_ID = /\A\{#([^\s{}]+)\}/
 
@@ -939,9 +942,13 @@ module Caracal
       # The character an entity stands for. With literal_braces, { and }
       # become char markers, which PostProcessor turns back into braces after
       # the template merge: written as &#123;, they form no {{placeholder}}
-      # (Caracal::Md.escape writes them so).
+      # (Caracal::Md.escape writes them so). The marker characters become
+      # U+FFFD: link texts, captions and the table of contents join the text
+      # of their elements, so entities could spell a marker there.
       def entity_char(el)
         char = el.value.char
+        return REPLACEMENT_CHAR if char == MARKER_OPEN or char == MARKER_CLOSE
+
         (@options[:literal_braces] and LITERAL_CHARS.include?(char)) ? Converter.marker('char', char.ord) : char
       end
 

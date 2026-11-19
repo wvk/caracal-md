@@ -6,12 +6,15 @@ module Caracal
     #   fn-start:N and fn-end:N move into word/footnotes.xml;
     # * an ol-start:N run sets the start number of its list;
     # * caption, ref and list markers become fields (see CaptionFields);
-    # * char:N, also inside other text, becomes the character N.
+    # * char:N for { and }, also inside other text and in attributes, becomes
+    #   that brace.
     class PostProcessor
       NS = Package::NS
       W  = NS['w']
 
-      CHAR = /#{Converter::MARKER_OPEN}char:(\d+)#{Converter::MARKER_CLOSE}/o
+      # The char markers the converter writes: those of Converter::LITERAL_CHARS.
+      CHAR_PREFIX = "#{Converter::MARKER_OPEN}char:".freeze
+      CHAR        = /#{CHAR_PREFIX}(#{Converter::LITERAL_CHARS.map(&:ord).join('|')})#{Converter::MARKER_CLOSE}/o
 
       FOOTNOTES_XML = <<~XML.freeze
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -41,12 +44,11 @@ module Caracal
 
       # Characters the converter kept from forming {{placeholders}} until the
       # template merge was done. They may sit inside longer text, e.g. in
-      # caracal's table of contents.
+      # caracal's table of contents, and in attributes, e.g. a table's
+      # w:tblCaption.
       def literal_chars
-        @doc.xpath('//w:t', NS).each do |t|
-          next unless t.content.include?(Converter::MARKER_OPEN)
-
-          t.content = t.content.gsub(CHAR) { Regexp.last_match(1).to_i.chr(Encoding::UTF_8) }
+        @doc.xpath("//w:t[contains(., '#{CHAR_PREFIX}')] | //@*[contains(., '#{CHAR_PREFIX}')]", NS).each do |node|
+          node.content = node.content.gsub(CHAR) { Regexp.last_match(1).to_i.chr(Encoding::UTF_8) }
         end
       end
 
