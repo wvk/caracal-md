@@ -288,6 +288,21 @@ end
 
 Here footnotes become a numbered list after the content, captions stay unnumbered and `[](#id)` stays a plain link: Word footnotes and fields need the finished package, which `Caracal::Md.render` builds.
 
+`Caracal::Md.document` builds that package around caracal commands. Inside its block, `docx.markdown` converts with the state of one render: Word footnotes numbered across the calls, caption numbers and cross-references across them, and the template, language and document properties of `Caracal::Md.render`, with the same options. It returns the DOCX bytes.
+
+```ruby
+Caracal::Md.document(template: 'offer.dotx', lang: 'de') do |docx|
+  docx.markdown "# Angebot\n\nWie besprochen[^1].\n\n[^1]: Telefonat am 3. November."
+  docx.table offer.rows, border_size: 4
+  docx.markdown "Gültig bis Jahresende[^2].\n\n[^2]: Preise netto."
+end
+```
+
+* The options set up the whole document: language, caption numbering, template, and the table of contents and lists of figures, which go at its start. There is no title block.
+* Front matter in a `markdown` call adds to the template's placeholders and the document properties, a later call's keys winning, and gives that call its `heading-offset`. Front matter naming a setting of the whole document (`lang`, `toc`, `lof`, `number-captions`, …) adds a warning.
+* `docx.markdown` takes `heading_offset:` alone here; `docx.markdown_warnings` lists what the last call couldn't convert, `Renderer#warnings` everything.
+* In headers, footers and table cells, `#markdown` works as outside the block.
+
 
 ## Security
 

@@ -30,6 +30,18 @@ module Caracal
       Renderer.new(**options).render(markdown)
     end
 
+    # DOCX bytes for a document built with caracal commands, Markdown
+    # included through docx.markdown, with Word footnotes, numbered
+    # captions and the template as in #render (see Renderer#document):
+    #
+    #   Caracal::Md.document(template: 'offer.dotx', lang: 'de') do |docx|
+    #     docx.markdown "# Angebot\n\nWie besprochen[^1].\n\n[^1]: Telefonat am 3. November."
+    #     docx.table offer.rows, border_size: 4
+    #   end
+    def self.document(**options, &block)
+      Renderer.new(**options).document(&block)
+    end
+
     def self.save(markdown, path, **options)
       File.binwrite(path, render(markdown, **options))
       path

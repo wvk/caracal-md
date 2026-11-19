@@ -140,21 +140,38 @@ module Caracal
       # the title block.
       def convert(markdown, target, meta: {})
         root = parse(markdown)
-        @heading_offset = heading_offset(root)
-        lof = (@options[:lof] and not contains_directive?(root, :lof))
-        lot = (@options[:lot] and not contains_directive?(root, :lot))
+        start(target, meta: meta, root: root)
+        add(root, target)
+        check_references
+        target
+      end
+
+      # The start of a document on +target+: title block, table of contents
+      # and lists of figures and tables, as the options ask for them, except
+      # where the Markdown in +root+ places them itself.
+      def start(target, meta: {}, root: nil)
+        placed = ->(kind) { (root and contains_directive?(root, kind)) }
         # a list of figures or tables lists numbered captions, so it numbers all
-        @number_all = (@captions and (@captions.number_all? or @options[:lof] or @options[:lot] or
-                                      contains_directive?(root, :lof) or contains_directive?(root, :lot)))
+        @number_all = (@captions and (@captions.number_all? or @options[:lof] or @options[:lot]))
 
         title_block(meta, target) if @options[:title_block]
-        toc(target) if @options[:toc] and not contains_directive?(root, :toc)
-        list_of_captions(:figure, target) if lof
-        list_of_captions(:table, target) if lot
-        blocks(root.children, target, {})
-        footnote_section(target)
-        (@referenced.uniq - @targets).each { |id| warn "cross-reference to ##{id}: no heading, figure or table has this id" }
+        toc(target) if @options[:toc] and not placed.call(:toc)
+        list_of_captions(:figure, target) if @options[:lof] and not placed.call(:lof)
+        list_of_captions(:table, target) if @options[:lot] and not placed.call(:lot)
+      end
+
+      # Converts +markdown+ onto +target+ as one part of a document that
+      # #start began and #check_references ends (Renderer#document): footnotes,
+      # caption numbers and cross-references continue across the parts.
+      # +heading_offset+ replaces the option's for this part.
+      def convert_part(markdown, target, heading_offset: nil)
+        add(parse(markdown), target, heading_offset: heading_offset)
         target
+      end
+
+      # Warns about cross-references to ids nothing in the document has.
+      def check_references
+        (@referenced.uniq - @targets).each { |id| warn "cross-reference to ##{id}: no heading, figure or table has this id" }
       end
 
       # Defines the styles named by custom-style attributes that +docx+ lacks.
@@ -174,6 +191,15 @@ module Caracal
       end
 
       private
+
+      # The content of +root+ onto +target+, its footnotes after it.
+      def add(root, target, heading_offset: nil)
+        @heading_offset = heading_offset(root, heading_offset.nil? ? @options[:heading_offset] : heading_offset)
+        @number_all ||= (@captions and (contains_directive?(root, :lof) or contains_directive?(root, :lot)))
+        from = @footnotes.size
+        blocks(root.children, target, {})
+        footnote_section(target, from)
+      end
 
       #========== PARSING =====================================
 
@@ -335,8 +361,7 @@ module Caracal
       # The levels the heading_offset option adds to every heading's: an
       # integer as it is, or for :auto those that make the highest level in
       # +root+ level 1.
-      def heading_offset(root)
-        offset = @options[:heading_offset]
+      def heading_offset(root, offset)
         return 0 if offset.nil?
         return 1 - (heading_levels(root).min || 1) if offset.to_s == 'auto'
 
@@ -971,11 +996,16 @@ module Caracal
         end
       end
 
-      def footnote_section(target)
-        return if @footnotes.empty?
+      # The footnotes from index +from+ on, those of the content just
+      # converted; footnotes in them add to the list as it goes.
+      def footnote_section(target, from = 0)
+        return if @footnotes.size <= from
 
         target.hr unless @options[:footnotes] == :native
-        @footnotes.each do |number, definition|
+        index = from
+        while index < @footnotes.size
+          number, definition = @footnotes[index]
+          index += 1
           if @options[:footnotes] == :native
             target.p Converter.marker('fn-start', number), style: 'FootnoteText'
             blocks(definition&.children || [], target, { style: 'FootnoteText', list_style: 'FootnoteText' })
